@@ -1,4 +1,4 @@
-# .github/workflows/firebase-deploy.yml
+# .github/workflows/firebase-deploy.yml (수정된 결과)
 
 name: Deploy to Firebase (Hosting + Functions)
 
@@ -37,11 +37,14 @@ jobs:
           };
           EOF
 
-      # functions 폴더의 의존성을 설치합니다.
+      # functions 폴더가 존재할 경우에만 의존성을 설치합니다.
       - name: Install Functions deps
-        if: "isDirectory('functions')" # functions 폴더가 있을 때만 실행
-        working-directory: functions
-        run: npm install
+        run: |
+          if [ -d "functions" ]; then
+            cd functions && npm install
+          else
+            echo "functions directory not found, skipping npm install."
+          fi
 
       # Google Cloud에 인증합니다.
       - name: Authenticate to Google Cloud
