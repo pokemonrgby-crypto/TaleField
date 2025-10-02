@@ -1,0 +1,20 @@
+[
+  {
+    "id": "god_hakuren",
+    "name": "하쿠렌",
+    "hp": 20,
+    "maxKi": 12,
+    "handStart": 3,
+    "passive": "턴 종료 시 기력이 3 이상 남았으면 보호막 1 획득.",
+    "ultimatePassive": "체력 8 이하가 되면 이번 라운드 한 번 공격 피해 +2."
+  },
+  {
+    "id": "god_aya",
+    "name": "아야",
+    "hp": 20,
+    "maxKi": 10,
+    "handStart": 4,
+    "passive": "반응 카드를 쓰면 다음 드로우 +1(턴당 1회).",
+    "ultimatePassive": "처음 사망 위기(체력 0)가 되면 1로 생존(게임당 1회)."
+  }
+]

@@ -1,0 +1,236 @@
+[
+  {
+    "id": "card_blt1",
+    "ownerUid": "system",
+    "name": "찌릿찌릿 탄막",
+    "type": "공격",
+    "rarity": "일반",
+    "text": "적 하나에게 2 피해. 다음 반응 창에서 적의 반응 비용 +1.",
+    "target": "적1",
+    "numbers": {
+      "damage": 2
+    },
+    "keywords": [],
+    "cost": 1,
+    "cooldownTurns": 0,
+    "dsl": [
+      {
+        "op": "대상고르기",
+        "who": "적1"
+      },
+      {
+        "op": "피해",
+        "who": "대상",
+        "value": 2
+      },
+      {
+        "op": "표식추가",
+        "who": "적전체",
+        "name": "다음반응+1",
+        "turns": 1,
+        "consumeOnUse": true
+      }
+    ],
+    "checks": {
+      "banned": false,
+      "version": 1,
+      "validatorScore": 10
+    }
+  },
+  {
+    "id": "card_guard1",
+    "ownerUid": "system",
+    "name": "물러서!",
+    "type": "반응",
+    "rarity": "일반",
+    "text": "이번 피해 2 감소. 다음 드로우 -1.",
+    "target": "자신",
+    "numbers": {
+      "reduce": 2
+    },
+    "keywords": [],
+    "cost": 0,
+    "cooldownTurns": 2,
+    "dsl": [
+      {
+        "op": "피해감소",
+        "who": "자신",
+        "value": 2,
+        "scope": "이번피해"
+      },
+      {
+        "op": "표식추가",
+        "who": "자신",
+        "name": "다음드로우-1",
+        "turns": 1,
+        "consumeOnUse": true
+      },
+      {
+        "op": "쿨다운설정",
+        "who": "자신",
+        "name": "물러서!",
+        "turns": 2
+      }
+    ],
+    "checks": {
+      "banned": false,
+      "version": 1,
+      "validatorScore": 8
+    }
+  },
+  {
+    "id": "card_pact1",
+    "ownerUid": "system",
+    "name": "오래된 약정",
+    "type": "지속",
+    "rarity": "희귀",
+    "text": "매 턴 시작 기력 +1. 발동 시 손패 1장 버림.",
+    "target": "자신",
+    "numbers": {
+      "regen": 1
+    },
+    "keywords": [
+      "지속"
+    ],
+    "cost": 3,
+    "cooldownTurns": 0,
+    "dsl": [
+      {
+        "op": "버림",
+        "who": "자신",
+        "count": 1
+      },
+      {
+        "op": "지속등록",
+        "who": "자신",
+        "name": "턴시작_기력+1",
+        "body": [
+          {
+            "op": "기력변화",
+            "who": "자신",
+            "value": 1
+          }
+        ],
+        "timing": "턴시작"
+      }
+    ],
+    "checks": {
+      "banned": false,
+      "version": 1,
+      "validatorScore": 18
+    }
+  },
+  {
+    "id": "card_bolt2",
+    "ownerUid": "system",
+    "name": "벼락강림",
+    "type": "공격",
+    "rarity": "희귀",
+    "text": "적 하나에게 6 피해(관통). 상대 체력이 너보다 많으면 추가로 2 피해.",
+    "target": "적1",
+    "numbers": {
+      "damage": 6,
+      "bonus": 2
+    },
+    "keywords": [
+      "관통",
+      "역보정"
+    ],
+    "cost": 3,
+    "cooldownTurns": 0,
+    "dsl": [
+      {
+        "op": "대상고르기",
+        "who": "적1"
+      },
+      {
+        "op": "피해",
+        "who": "대상",
+        "value": 6,
+        "pierce": true
+      },
+      {
+        "op": "만약",
+        "cond": "상대HP>내HP",
+        "then": [
+          {
+            "op": "피해",
+            "who": "대상",
+            "value": 2
+          }
+        ]
+      }
+    ],
+    "checks": {
+      "banned": false,
+      "version": 1,
+      "validatorScore": 22
+    }
+  },
+  {
+    "id": "card_seal1",
+    "ownerUid": "system",
+    "name": "침묵의 고리",
+    "type": "보조",
+    "rarity": "희귀",
+    "text": "적 하나를 봉인한다. 다음 반응 1회 불가.",
+    "target": "적1",
+    "numbers": {},
+    "keywords": [
+      "봉인"
+    ],
+    "cost": 2,
+    "cooldownTurns": 0,
+    "dsl": [
+      {
+        "op": "대상고르기",
+        "who": "적1"
+      },
+      {
+        "op": "표식추가",
+        "who": "대상",
+        "name": "반응불가1회",
+        "turns": 2,
+        "consumeOnUse": true
+      }
+    ],
+    "checks": {
+      "banned": false,
+      "version": 1,
+      "validatorScore": 14
+    }
+  },
+  {
+    "id": "card_burst1",
+    "ownerUid": "system",
+    "name": "축적 폭발",
+    "type": "공격",
+    "rarity": "서사",
+    "text": "이번 턴에 남는 기력 ×2 만큼 피해를 적 하나에 준다.",
+    "target": "적1",
+    "numbers": {
+      "multiplier": 2
+    },
+    "keywords": [
+      "축적"
+    ],
+    "cost": 4,
+    "cooldownTurns": 0,
+    "dsl": [
+      {
+        "op": "대상고르기",
+        "who": "적1"
+      },
+      {
+        "op": "피해",
+        "who": "대상",
+        "formula": "남는기력*2"
+      }
+    ],
+    "checks": {
+      "banned": false,
+      "version": 1,
+      "validatorScore": 30
+    }
+  }
+]

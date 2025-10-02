@@ -1,0 +1,102 @@
+{
+  "collections": {
+    "rooms": {
+      "doc": {
+        "title": "string",
+        "hostUid": "string",
+        "status": "waiting|ready|playing|ended",
+        "maxPlayers": 8,
+        "rules": {
+          "minPlayers": 3,
+          "handStart": 3,
+          "handMax": 5,
+          "kiStart": 0,
+          "kiRegen": 2,
+          "kiMax": 10,
+          "reactionLimitPerTurn": 2
+        },
+        "createdAt": "timestamp",
+        "poolSeed": "number"
+      },
+      "subcollections": {
+        "players": {
+          "doc": {
+            "uid": "string",
+            "nickname": "string",
+            "characterId": "string",
+            "selectedCardIds": [
+              "string"
+            ],
+            "ready": "boolean"
+          }
+        }
+      }
+    },
+    "matches": {
+      "doc": {
+        "roomId": "string",
+        "status": "playing|finished",
+        "turn": 1,
+        "currentPlayerUid": "string",
+        "phase": "main|reaction|resolve|end",
+        "stack": [
+          "object"
+        ],
+        "deckCount": 0,
+        "discardCount": 0,
+        "logs": [
+          "object"
+        ],
+        "seed": 123456,
+        "createdAt": "timestamp"
+      },
+      "subcollections": {
+        "players": {
+          "doc": {
+            "uid": "string",
+            "hp": 20,
+            "maxKi": 10,
+            "ki": 0,
+            "hand": [
+              "string"
+            ],
+            "shield": 0,
+            "flags": {
+              "string": "boolean"
+            },
+            "cooldowns": {
+              "cardName": 0
+            },
+            "reactionUsed": 0
+          }
+        }
+      }
+    },
+    "userCards": {
+      "doc": {
+        "ownerUid": "string",
+        "name": "string",
+        "type": "공격|방어|회복|보조|지속|반응|장착",
+        "rarity": "일반|희귀|서사",
+        "text": "string",
+        "target": "자신|적1|전원|아군전체",
+        "numbers": "object",
+        "keywords": [
+          "string"
+        ],
+        "cost": 0,
+        "cooldownTurns": 0,
+        "dsl": "object",
+        "checks": {
+          "banned": false,
+          "version": 1,
+          "validatorScore": 0,
+          "errors": [
+            "string"
+          ]
+        },
+        "status": "approved|blocked|pending"
+      }
+    }
+  }
+}
