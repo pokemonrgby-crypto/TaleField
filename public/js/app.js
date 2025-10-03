@@ -1,155 +1,149 @@
-// app.js
+// public/js/app.js
 import {
   auth, authReady, signInWithGoogle, signOutUser,
-  needNickname, claimNickname, callGenCards, db, ts
+  needNickname, claimNickname, callGenCards, db
 } from "./firebase.js";
-import {
-  renderCardTile, seedRandom, simulateApply // from engine.js
-} from "./engine.js";
-import {
-  doc, setDoc, serverTimestamp as _ts
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+// '내 카드' 탭 초기화 함수 임포트
+import { initMyCardsTab, loadMyCards } from "./tabs/my-cards.js";
 
-// ----- 헤더 버튼 -----
-const $ = (q)=>document.querySelector(q);
-$("#btn-google").addEventListener("click", signInWithGoogle);
-$("#btn-logout").addEventListener("click", signOutUser);
 
-// ----- 탭 전환 -----
-document.querySelectorAll("header .tabs button").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
-    const id = btn.dataset.tab;
-    document.querySelectorAll("section").forEach(s=>s.classList.remove("active"));
-    document.getElementById(id).classList.add("active");
+// --- DOM Elements ---
+const $ = (q) => document.querySelector(q);
+const $$ = (q) => document.querySelectorAll(q);
+
+// --- App State ---
+let currentUser = null;
+
+// --- UI: 탭 전환 ---
+$$(".bottom-nav__tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const activeTab = btn.dataset.tab;
+    $$(".bottom-nav__tabs button").forEach(b => b.classList.toggle("active", b === btn));
+    $$("main section").forEach(s => s.classList.toggle("active", s.id === activeTab));
+    window.scrollTo(0, 0);
   });
 });
 
-// ----- 닉네임 모달 -----
-const modal   = $("#nickname-modal");
-const inNick  = $("#nickname-input");
-const btnSave = $("#nickname-save");
-const elErr   = $("#nickname-error");
+// --- UI: 인증 버튼 ---
+$("#btn-google").addEventListener("click", signInWithGoogle);
+$("#btn-logout").addEventListener("click", signOutUser);
 
-btnSave.addEventListener("click", async ()=>{
-  elErr.textContent = "";
-  const nick = inNick.value.trim();
-  if(nick.length < 2 || nick.length > 12){ elErr.textContent="2~12자로 해줘."; return; }
-  try{
-    const u = await authReady;
-    if(!u) throw new Error("로그인이 필요해.");
-    await claimNickname(u.uid, nick);
-    modal.style.display = "none";
-  }catch(e){ elErr.textContent = e.message || "저장 실패"; }
+onAuthStateChanged(auth, user => {
+  currentUser = user;
+  $("#btn-google").style.display = user ? "none" : "";
+  $("#btn-logout").style.display = user ? "" : "none";
+  if (user) {
+    checkNickname();
+    // 로그인 시 '내 카드' 탭의 내용을 한 번 불러와 줍니다.
+    loadMyCards(); 
+  }
 });
 
-(async ()=>{
+// --- UI: 닉네임 모달 ---
+const nicknameModal = $("#nickname-modal");
+const nicknameInput = $("#nickname-input");
+const nicknameSaveBtn = $("#nickname-save");
+const nicknameError = $("#nickname-error");
+
+async function checkNickname() {
   const s = await needNickname();
-  if(s.need){ modal.style.display = "block"; }
-})();
+  if (s.need) {
+    nicknameModal.style.display = "flex";
+  }
+}
 
-// ====== 생성(Gen) 탭 ======
-const elPrompt = $("#gen-prompt");
-const elCount = $("#gen-count");
-const elPower = $("#gen-power");
-const elTemp  = $("#gen-temp");
-const btnGen  = $("#btn-gen-cards");
-const btnSaveSel = $("#btn-accept-selected");
-const elGrid  = $("#gen-results");
-const elStatus= $("#gen-status");
+nicknameSaveBtn.addEventListener("click", async () => {
+  nicknameError.textContent = "";
+  const nick = nicknameInput.value.trim();
+  if (nick.length < 2 || nick.length > 12) {
+    nicknameError.textContent = "2~12자 사이로 입력해주세요.";
+    return;
+  }
+  try {
+    if (!currentUser) throw new Error("로그인이 필요합니다.");
+    await claimNickname(currentUser.uid, nick);
+    nicknameModal.style.display = "none";
+  } catch (e) {
+    nicknameError.textContent = e.message || "저장 중 오류가 발생했습니다.";
+  }
+});
 
-let lastGenCards = [];
-let selectedIds = new Set();
 
-function setStatus(t){ elStatus.textContent = t; }
+// ====== 생성(Gen) 탭 로직 ======
+const genPromptEl = $("#gen-prompt");
+const genCountEl = $("#gen-count");
+const genPowerEl = $("#gen-power");
+const genTempEl = $("#gen-temp");
+const genBtn = $("#btn-gen-cards");
+const genGridEl = $("#gen-results");
+const genStatusEl = $("#gen-status");
 
-btnGen.addEventListener("click", async ()=>{
-  try{
-    setStatus("생성 중…");
-    const u = await authReady; if(!u) throw new Error("로그인이 필요해.");
-    const promptText = elPrompt.value.trim();
+function setGenStatus(text) { genStatusEl.textContent = text; }
+
+// 카드 타일 렌더링 함수 (생성 결과용)
+function renderGenResultCardTile(card) {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.dataset.attr = card.attribute;
+    el.dataset.cardId = card.id;
+    const costHTML = `<div style="font-size: 1.1rem; font-weight: bold;">${card.cost}</div>`;
+    el.innerHTML = `
+      <div class="card__title">
+        <span>${card.name}</span>
+        ${costHTML}
+      </div>
+      <div class="card__body">
+        <div class="muted" style="font-size:0.85rem;">${card.attribute} / ${card.rarity} / ${card.type}</div>
+        <p>${card.text || "(효과 없음)"}</p>
+        <div class="card__meta">Score: ${card.checks?.validatorScore ?? 0}</div>
+      </div>
+    `;
+    return el;
+}
+
+
+genBtn.addEventListener("click", async () => {
+  try {
+    setGenStatus("AI가 카드를 생성하는 중...");
+    genBtn.disabled = true;
+    if (!currentUser) throw new Error("로그인이 필요합니다.");
+    const promptText = genPromptEl.value.trim();
     if (promptText.length < 5) {
-      setStatus("프롬프트를 5자 이상 입력해주세요.");
+      setGenStatus("프롬프트를 5자 이상 입력해주세요.");
       return;
     }
 
     const params = {
       prompt: promptText,
-      count: Number(elCount.value||6),
-      powerCap: Number(elPower.value||10),
-      temperature: Number(elTemp.value||0.8)
+      count: Number(genCountEl.value || 6),
+      powerCap: Number(genPowerEl.value || 10),
+      temperature: Number(genTempEl.value || 0.8)
     };
-    const out = await callGenCards(params);
+    const result = await callGenCards(params);
 
-    // ANCHOR: log-raw-response
     console.log("--- AI Raw Response ---");
-    console.log(out.rawJson);
-    try {
-      // JSON 문자열을 객체로 파싱하여 더 보기 좋게 출력
-      console.log("--- Parsed AI Response ---");
-      console.table(JSON.parse(out.rawJson));
-    } catch(e) {
-      console.error("Failed to parse raw JSON response:", e);
-    }
-    console.log("-----------------------");
-
-
-    lastGenCards = out.cards || [];
-    selectedIds.clear();
-    renderGenResults();
-    setStatus(`생성 완료: ${lastGenCards.length}장 (유효하지 않은 ${params.count - lastGenCards.length}장은 제외)`);
-  }catch(e){
+    console.log(result.rawJson);
+    
+    genGridEl.innerHTML = "";
+    result.cards.forEach(card => genGridEl.appendChild(renderGenResultCardTile(card)));
+    
+    setGenStatus(`생성 완료: ${result.cards.length}장의 카드가 '내 카드' 탭에 추가되었습니다.`);
+    // 생성 완료 후, '내 카드' 탭 데이터도 갱신
+    loadMyCards(); 
+  } catch (e) {
     console.error(e);
-    setStatus("실패: " + (e.message||e));
+    setGenStatus("오류: " + (e.details?.raw || e.message || e));
+  } finally {
+      genBtn.disabled = false;
   }
 });
 
-function renderGenResults(){
-  elGrid.innerHTML = "";
-  for(const card of lastGenCards){
-    const node = renderCardTile(card, {
-      selectable:true,
-      selected:selectedIds.has(card.id),
-      onToggle: (on)=>{ if(on) selectedIds.add(card.id); else selectedIds.delete(card.id); }
-    });
-    // 신고 버튼
-    const btnReport = document.createElement("button");
-    btnReport.className="btn";
-    btnReport.textContent="신고";
-    btnReport.addEventListener("click", ()=> openReport(card));
-    node.appendChild(btnReport);
-
-    // 미니 시뮬레이션 버튼(랜덤/지연효과 데모)
-    const bSim = document.createElement("button");
-    bSim.className="btn";
-    bSim.textContent="미니 시뮬";
-    bSim.addEventListener("click", ()=>{
-      const log = simulateApply(card, {seed: Date.now().toString()});
-      alert("시뮬 결과:\n" + log.join("\n"));
-    });
-    node.appendChild(bSim);
-
-    elGrid.appendChild(node);
-  }
+// --- 앱 초기화 ---
+function initApp() {
+    // '내 카드' 탭 기능 초기화
+    initMyCardsTab();
 }
 
-async function openReport(card){
-  const reason = prompt(`카드 신고 사유 입력(강함/불일치/부적절/버그 등)\n[${card.name}]`);
-  if(!reason) return;
-  const u = await authReady; if(!u) { alert("로그인이 필요해."); return; }
-  const rid = "r_" + Date.now().toString(36);
-  await setDoc(doc(db, "reports", "cards", card.id, rid), {
-    uid: u.uid, reason, cardVersion: card.checks?.version || 1,
-    createdAt: _ts()
-  });
-  alert("신고 접수 완료!");
-}
-
-btnSaveSel.addEventListener("click", async ()=>{
-  const pick = lastGenCards.filter(c=>selectedIds.has(c.id));
-  if(pick.length===0){ alert("선택된 카드가 없어!"); return; }
-  // 서버에서 이미 저장했지만, 로컬 프로젝트에서는 다시 merge 가능
-  for(const c of pick){
-    await setDoc(doc(db, "cards", c.id), { ...c, savedAt: _ts() }, { merge:true });
-  }
-  alert(`저장 완료 (${pick.length}장)`);
-});
+initApp();
