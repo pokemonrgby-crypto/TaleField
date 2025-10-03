@@ -41,7 +41,10 @@ const Op = z.lazy(() => z.discriminatedUnion("op", [
   z.object({ op:z.literal("execute"), target:z.string(), condition: z.string() }), // 즉사
   z.object({ op:z.literal("onDeath"), actions:z.array(Op) }) // 동귀어진 등
 ]));
-const validOps = new Set(Op.options.map(o => o.shape.op.value));
+
+// ANCHOR: functions/index.js (validOps fix)
+// z.lazy()로 감싸진 스키마의 내부 옵션에 접근하기 위해 .schema를 추가합니다.
+const validOps = new Set(Op.schema.options.map(o => o.shape.op.value));
 
 
 const SkillSchema = z.object({
@@ -206,14 +209,14 @@ function sanitizeCard(card) {
   // keywords가 문자열 하나로 올 때 배열화
   if (typeof card.keywords === 'string') card.keywords = [card.keywords];
   normalizeAttribute(card);
-  card.dsl = normalizeDslOps(card.dsl); // 수정된 함수 호출
+  card.dsl = normalizeDslOps(card.dsl);
   return card;
 }
 
 function sanitizeCharacter(ch) {
   normalizeAttribute(ch);
   for (const s of ch.skills || []) {
-    s.dsl = normalizeDslOps(s.dsl); // 수정된 함수 호출
+    s.dsl = normalizeDslOps(s.dsl);
   }
   return ch;
 }
