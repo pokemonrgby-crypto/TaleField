@@ -1,6 +1,8 @@
 // /public/js/tabs/home.js
 import { auth, db, ts } from "../firebase.js";
 import { collection, addDoc, onSnapshot, orderBy, query, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
 import { state, setRoom } from "../state.js";
 import { $, renderRooms, toast } from "../ui.js";
 
