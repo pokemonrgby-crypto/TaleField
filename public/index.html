@@ -3,13 +3,44 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TaleField — Hosting A (MVP)</title>
-  <link rel="stylesheet" href="./style.css" />
+  <title>TaleField — MVP</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#121821; --ink:#e6f3ff; --ink-dim:#a8bfd6; --accent:#79c2ff; --line:#223046; --danger:#ff6b6b; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+    .topbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; padding:12px 16px; background:#0d131b; border-bottom:1px solid var(--line); }
+    .topbar h1 { font-size:18px; margin:0; }
+    .topbar .user { margin-left:auto; color:var(--ink-dim); font-size:12px; }
+    main { max-width:1100px; margin:0 auto; padding:16px; }
+    .tabs { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+    .tabs button { background:#162232; color:var(--ink); border:1px solid var(--line); padding:8px 12px; border-radius:10px; cursor:pointer; }
+    .tabs button.active { outline:2px solid var(--accent); }
+    .tab { display:none; }
+    .tab.active { display:block; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px; }
+    .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .row.spread { justify-content:space-between; }
+    .list, .grid, .hand { list-style:none; padding:0; margin:0; }
+    .list li { padding:10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:10px; margin-top:10px; }
+    .cardbox { border:1px solid var(--line); border-radius:12px; padding:10px; background:#0f151e; display:flex; gap:8px; }
+    .cardbox h4 { margin:0 0 4px 0; font-size:14px; }
+    .hint { color:var(--ink-dim); font-size:12px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .log { background:#0f151e; border:1px solid var(--line); border-radius:12px; padding:10px; height:260px; overflow:auto; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--ink-dim); }
+    .react-queue { min-height:44px; display:flex; gap:8px; align-items:center; }
+    .react-pill { border:1px dashed var(--line); border-radius:999px; padding:6px 10px; }
+    input, button, select { background:#0f151e; color:var(--ink); border:1px solid var(--line); padding:8px 10px; border-radius:10px; }
+    input[type="number"] { width:90px; }
+    button.primary { background:#183350; border-color:#274767; }
+    .toast { position:fixed; right:16px; bottom:16px; background:#132233; color:var(--ink); border:1px solid var(--line); padding:10px 14px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,.35); display:none; }
+    @media (max-width:900px){ .grid-2 { grid-template-columns:1fr; } }
+  </style>
 </head>
 <body>
   <header class="topbar">
     <h1>🥥 TaleField (MVP)</h1>
-    <div id="userBox">로그인 중...</div>
+    <div class="user" id="userBox">로그인 중…</div>
   </header>
 
   <main>
@@ -22,32 +53,34 @@
     <section id="tab-home" class="tab active">
       <div class="panel">
         <h2>방 만들기</h2>
-        <label>방 제목 <input id="roomTitle" placeholder="예: 형원이의 방" /></label>
-        <label>최대 인원 <input id="roomMax" type="number" value="8" min="2" max="8" /></label>
-        <button id="btnCreateRoom">방 생성</button>
+        <div class="row">
+          <label>방 제목 <input id="roomTitle" placeholder="예: 형원이의 방" /></label>
+          <label>최대 인원 <input id="roomMax" type="number" value="8" min="2" max="8" /></label>
+          <button id="btnCreateRoom" class="primary">방 생성</button>
+        </div>
       </div>
-
       <div class="panel">
-        <h2>방 목록</h2>
+        <div class="row spread">
+          <h2 style="margin:0">방 목록</h2>
+          <div class="hint">최근 생성 순 · 자동 새로고침</div>
+        </div>
         <ul id="roomList" class="list"></ul>
       </div>
     </section>
 
     <section id="tab-cards" class="tab">
       <div class="panel">
-        <h2>내 카드 (승인된 것 5~10장 선택)</h2>
-        <div class="row">
-          <div>
-            <p class="hint">현재 방: <span id="currentRoomId">(없음)</span></p>
-          </div>
-          <div>
-            <button id="btnRefreshCards">카드 새로고침</button>
+        <div class="row spread">
+          <h2 style="margin:0">내 카드 (승인된 것 5~10장 선택)</h2>
+          <div class="row">
+            <div class="hint">현재 방: <span id="currentRoomId">(없음)</span></div>
+            <button id="btnRefreshCards">새로고침</button>
           </div>
         </div>
         <ul id="myCards" class="grid"></ul>
-        <div class="row">
-          <div>선택: <span id="selectedCount">0</span>장</div>
-          <button id="btnSubmitCards">선택 카드 제출</button>
+        <div class="row spread" style="margin-top:8px;">
+          <div>선택: <strong id="selectedCount">0</strong>장</div>
+          <button id="btnSubmitCards" class="primary">선택 카드 제출</button>
         </div>
       </div>
     </section>
@@ -66,54 +99,17 @@
             <h3>로그</h3>
             <div id="logBox" class="log"></div>
             <h3>반응 큐(최대 2)</h3>
-            <div id="reactQueue" class="react-queue"><span>(비어있음)</span></div>
+            <div id="reactQueue" class="react-queue"><span class="hint">(비어있음)</span></div>
           </div>
         </div>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <small>Build: Hosting-A • 이 파일의 앵커를 기준으로 단계별 패치를 진행합니다.</small>
-  </footer>
+  <div id="toast" class="toast"></div>
 
-  <!-- Firebase SDK (CDN, ESM) -->
-  <script type="module">
-    // === 채워넣기 위치 ===
-    // ANCHOR: firebase-config
-    // 아래의 예시를 본인 프로젝트 값으로 교체하세요.
-    // const firebaseConfig = {
-    //   apiKey: "AI...",
-    //   authDomain: "your-app.firebaseapp.com",
-    //   projectId: "your-app",
-    //   storageBucket: "your-app.appspot.com",
-    //   messagingSenderId: "....",
-    //   appId: "1:...:web:..."
-    // };
+  <script src="./firebase-config.js"></script>
 
-    // === 앱 초기화 & 모듈 로드 ===
-    // ANCHOR: app-root
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-    if (!window.firebaseConfig) {
-      console.warn("firebaseConfig가 비어있습니다. index.html의 'firebase-config' 앵커에 값을 채워넣으세요.");
-    }
-    const app = initializeApp(window.firebaseConfig || {});
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    // 사용자 표시
-    const userBox = document.getElementById("userBox");
-    onAuthStateChanged(auth, (user)=>{
-      if (user) userBox.textContent = `UID: ${user.uid.slice(0,8)}… (익명 로그인)`;
-      else userBox.textContent = "로그인 필요";
-    });
-    signInAnonymously(auth).catch(console.error);
-  </script>
-
-  <!-- 앱 로직 -->
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
