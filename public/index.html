@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TaleField — Hosting A (MVP)</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🥥 TaleField (MVP)</h1>
+    <div id="userBox">로그인 중...</div>
+  </header>
+
+  <main>
+    <nav class="tabs">
+      <button data-tab="home" class="active">홈</button>
+      <button data-tab="cards">카드 선택</button>
+      <button data-tab="game">인게임</button>
+    </nav>
+
+    <section id="tab-home" class="tab active">
+      <div class="panel">
+        <h2>방 만들기</h2>
+        <label>방 제목 <input id="roomTitle" placeholder="예: 형원이의 방" /></label>
+        <label>최대 인원 <input id="roomMax" type="number" value="8" min="2" max="8" /></label>
+        <button id="btnCreateRoom">방 생성</button>
+      </div>
+
+      <div class="panel">
+        <h2>방 목록</h2>
+        <ul id="roomList" class="list"></ul>
+      </div>
+    </section>
+
+    <section id="tab-cards" class="tab">
+      <div class="panel">
+        <h2>내 카드 (승인된 것 5~10장 선택)</h2>
+        <div class="row">
+          <div>
+            <p class="hint">현재 방: <span id="currentRoomId">(없음)</span></p>
+          </div>
+          <div>
+            <button id="btnRefreshCards">카드 새로고침</button>
+          </div>
+        </div>
+        <ul id="myCards" class="grid"></ul>
+        <div class="row">
+          <div>선택: <span id="selectedCount">0</span>장</div>
+          <button id="btnSubmitCards">선택 카드 제출</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-game" class="tab">
+      <div class="panel">
+        <h2>인게임</h2>
+        <div class="grid-2">
+          <div>
+            <h3>내 상태</h3>
+            <div id="myState">HP: -, 기력: -, 손패: -</div>
+            <h3>손패</h3>
+            <ul id="myHand" class="hand"></ul>
+          </div>
+          <div>
+            <h3>로그</h3>
+            <div id="logBox" class="log"></div>
+            <h3>반응 큐(최대 2)</h3>
+            <div id="reactQueue" class="react-queue"><span>(비어있음)</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <small>Build: Hosting-A • 이 파일의 앵커를 기준으로 단계별 패치를 진행합니다.</small>
+  </footer>
+
+  <!-- Firebase SDK (CDN, ESM) -->
+  <script type="module">
+    // === 채워넣기 위치 ===
+    // ANCHOR: firebase-config
+    // 아래의 예시를 본인 프로젝트 값으로 교체하세요.
+    // const firebaseConfig = {
+    //   apiKey: "AI...",
+    //   authDomain: "your-app.firebaseapp.com",
+    //   projectId: "your-app",
+    //   storageBucket: "your-app.appspot.com",
+    //   messagingSenderId: "....",
+    //   appId: "1:...:web:..."
+    // };
+
+    // === 앱 초기화 & 모듈 로드 ===
+    // ANCHOR: app-root
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    if (!window.firebaseConfig) {
+      console.warn("firebaseConfig가 비어있습니다. index.html의 'firebase-config' 앵커에 값을 채워넣으세요.");
+    }
+    const app = initializeApp(window.firebaseConfig || {});
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // 사용자 표시
+    const userBox = document.getElementById("userBox");
+    onAuthStateChanged(auth, (user)=>{
+      if (user) userBox.textContent = `UID: ${user.uid.slice(0,8)}… (익명 로그인)`;
+      else userBox.textContent = "로그인 필요";
+    });
+    signInAnonymously(auth).catch(console.error);
+  </script>
+
+  <!-- 앱 로직 -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
