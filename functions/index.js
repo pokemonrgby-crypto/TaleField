@@ -41,8 +41,6 @@ const Op = z.lazy(() => z.discriminatedUnion("op", [
   z.object({ op:z.literal("execute"), target:z.string(), condition: z.string() }), // 즉사
   z.object({ op:z.literal("onDeath"), actions:z.array(Op) }) // 동귀어진 등
 ]));
-
-// ANCHOR: functions/index.js (validOps fix)
 // z.lazy()로 감싸진 스키마의 내부 옵션에 접근하기 위해 .schema를 추가합니다.
 const validOps = new Set(Op.schema.options.map(o => o.shape.op.value));
 
@@ -142,6 +140,7 @@ function extractFirstJsonObject(text) {
   throw new Error('Unbalanced JSON braces.');
 }
 
+// ANCHOR: functions/index.js (normalizeDslOps with target fix)
 function normalizeDslOps(dsl) {
   if (!Array.isArray(dsl)) return [];
 
@@ -156,6 +155,9 @@ function normalizeDslOps(dsl) {
     'addStatus': 'addMarker',
     'conditional': 'if',
   };
+  
+  // 'target'이 필수인 op 목록
+  const opsRequiringTarget = new Set(['damage', 'shield', 'heal', 'draw', 'discard', 'addMarker', 'lifesteal', 'execute']);
 
   const normalized = dsl.map(op => {
     if (!op || typeof op !== 'object' || !op.op) return null;
@@ -171,7 +173,7 @@ function normalizeDslOps(dsl) {
         return null;
     }
 
-    // 3. 필드 이름 교정
+    // 3. 필드 이름 및 값 교정
     if (op.op === 'draw' && 'amount' in op) {
       op.count = op.amount;
       delete op.amount;
@@ -183,8 +185,20 @@ function normalizeDslOps(dsl) {
       }
       if (!('turns' in op)) op.turns = 1;
     }
+    
+    // 4. target이 없는 경우 기본값 부여 (핵심 수정)
+    if (opsRequiringTarget.has(op.op) && !op.target) {
+        // 피해를 주는 효과는 'enemy', 이로운 효과는 'caster'를 기본값으로 설정
+        if (op.op === 'damage' || op.op === 'lifesteal' || op.op === 'execute') {
+            op.target = 'enemy';
+        } else {
+            op.target = 'caster';
+        }
+        console.warn(`Missing target for op '${op.op}', defaulting to '${op.target}'`);
+    }
 
-    // 4. 재귀적으로 내부 DSL 처리
+
+    // 5. 재귀적으로 내부 DSL 처리
     if (op.onHit) op.onHit = normalizeDslOps(op.onHit);
     if (op.then) op.then = normalizeDslOps(op.then);
     if (op.else) op.else = normalizeDslOps(op.else);
