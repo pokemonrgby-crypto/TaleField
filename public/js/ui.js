@@ -33,3 +33,11 @@ export function renderRooms(targetEl, rooms, onJoin){
     targetEl.appendChild(li);
   }
 }
+// ANCHOR: text-utils
+export function escapeHTML(s=""){
+  return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+}
+export function emojiLite(s=""){
+  return s.replaceAll(":)", "🙂").replaceAll(":D","😄").replaceAll(":(","🙁");
+}
+export function timeHHMM(d){ const p=n=>String(n).padStart(2,"0"); return `${p(d.getHours())}:${p(d.getMinutes())}`; }
