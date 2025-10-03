@@ -1,5 +1,4 @@
 // /public/js/app.js
-import { auth } from "./firebase.js";
 import { auth, authReady } from "./firebase.js";
 import { setActiveTab, $, toast } from "./ui.js";
 import { state, setUser, setRoom } from "./state.js";
