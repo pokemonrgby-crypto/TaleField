@@ -14,6 +14,17 @@ export const auth = getAuth(app);
 export const db   = getFirestore(app);
 export const ts   = serverTimestamp;
 
+// ANCHOR: google-login
+import { GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+export async function signInWithGoogle(){
+  const provider = new GoogleAuthProvider();
+  await signInWithPopup(auth, provider);
+}
+export async function signOutUser(){
+  await signOut(auth);
+}
+
+
 // 자동 익명 로그인
 // ANCHOR: sign-in-anon
 onAuthStateChanged(auth, (u) => {
