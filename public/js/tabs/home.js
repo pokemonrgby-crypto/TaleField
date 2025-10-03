@@ -66,8 +66,15 @@ async function joinRoom(room){
 // ANCHOR: rooms-listener
 export function watchRooms(){
   const qRooms = query(collection(db, "rooms"), orderBy("createdAt","desc"));
-  return onSnapshot(qRooms, (snap)=>{
-    const arr = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  return onSnapshot(
+  qRooms,
+  (snap) => {
+    const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderRooms(roomList, arr, joinRoom);
-  });
+  },
+  (err) => {
+    console.error("rooms onSnapshot error:", err);
+    alert("실시간 연결에 실패했어: " + (err?.message || err));
+  }
+);
 }
