@@ -14,7 +14,7 @@ import { processStack } from "./src/engine.js";
 const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 const DAILY_CARD_LIMIT = 15;
 const DAILY_CHAR_LIMIT = 3;
 
