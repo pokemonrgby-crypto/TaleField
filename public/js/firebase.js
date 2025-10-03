@@ -4,7 +4,13 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getFirestore, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  initializeFirestore,
+  serverTimestamp,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
 
 
 // Firebase 자동 설정(JSON) 우선, 실패 시 window.__FBCONFIG__ 허용
@@ -24,11 +30,18 @@ if (!cfg.projectId || !cfg.apiKey) {
   throw new Error("FIREBASE_CONFIG_MISSING");
 }
 
+console.log("firebase projectId:", cfg?.projectId);
+
 export const app  = initializeApp(cfg);
 
 
 export const auth = getAuth(app);
-export const db   = getFirestore(app);
+const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+  experimentalLongPollingOptions: { timeoutSeconds: 30 },
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+
 export const ts   = serverTimestamp;
 
 // ANCHOR: google-login
