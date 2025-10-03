@@ -42,6 +42,9 @@ function renderCharacterTile(char) {
 }
 
 async function handleGenerate() {
+    // ANCHOR: character-gen-bug-fix-2
+    if (genBtn.disabled) return; // 중복 클릭 방지
+
     const user = getAuth().currentUser;
     if (!user) {
         setStatus("캐릭터를 생성하려면 로그인이 필요합니다.", true);
@@ -53,10 +56,10 @@ async function handleGenerate() {
         return;
     }
 
-    try {
-        setStatus("AI가 당신의 캐릭터를 구상하는 중...");
-        genBtn.disabled = true;
+    setStatus("AI가 당신의 캐릭터를 구상하는 중...");
+    genBtn.disabled = true;
 
+    try {
         const params = {
             prompt: prompt,
             temperature: Number(genTempEl.value || 0.8),
@@ -69,7 +72,7 @@ async function handleGenerate() {
             setStatus(`'${result.character.name}' 캐릭터가 생성되었습니다! '내 캐릭터' 탭에서 확인하세요.`);
             loadMyCharacters(); // 내 캐릭터 목록 자동 갱신
         } else {
-            throw new Error("AI가 유효한 캐릭터를 반환하지 않았습니다.");
+            throw new Error(result.error || "AI가 유효한 캐릭터를 반환하지 않았습니다.");
         }
     } catch (e) {
         console.error(e);
