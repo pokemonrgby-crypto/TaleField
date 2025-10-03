@@ -174,14 +174,31 @@ export const genCards = functions
   "seed": "${params.seed ?? Date.now()}"
 }`;
 
-  const rawJson = await callGemini(system, user, params.temperature, apiKey);
+  let rawJson = await callGemini(system, user, params.temperature, apiKey);
+
+  // =======================================================
+  // ANCHOR: debug-raw-response
+  // 추가된 디버깅 코드 1: 원본 응답을 로그에 출력
+  console.log("--- Gemini Raw Response ---");
+  console.log(rawJson);
+  console.log("---------------------------");
+
+  // 추가된 디버깅 코드 2: 응답에서 JSON 부분만 추출
+  // 모델이 Markdown 코드 블록을 포함하는 경우 대비
+  const jsonMatch = rawJson.match(/\[.*\]/s);
+  if (jsonMatch) {
+    rawJson = jsonMatch[0];
+    console.log("Extracted JSON from raw response.");
+  }
+  // =======================================================
+
 
   let arr;
   try{
     arr = JSON.parse(rawJson);
   }catch(e){
-    console.error("Model response is not a valid JSON:", rawJson);
-    throw new functions.https.HttpsError("invalid-argument", "모델 응답 JSON 파싱 실패", rawJson);
+    console.error("Model response is still not a valid JSON after extraction:", rawJson); // 로그 메시지 수정
+    throw new functions.https.HttpsError("invalid-argument", "모델 응답 JSON 파싱 실패", { rawResponse: rawJson }); // 상세 정보 추가
   }
 
   const out = [];
