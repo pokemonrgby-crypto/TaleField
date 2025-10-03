@@ -28,7 +28,7 @@ jobs:
           window.__FBCONFIG__ = {
             apiKey: "${{ secrets.FB_API_KEY }}",
             authDomain: "${{ secrets.FB_AUTH_DOMAIN }}",
-            projectId: "${{ secrets.FB_PROJECT_ID }}",
+            projectId: "${{ secrets.FIREBASE_PROJECT_ID }}",
             storageBucket: "${{ secrets.FB_STORAGE_BUCKET }}",
             messagingSenderId: "${{ secrets.FB_MESSAGING_SENDER_ID }}",
             appId: "${{ secrets.FB_APP_ID }}"
