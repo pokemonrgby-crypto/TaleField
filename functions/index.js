@@ -111,7 +111,10 @@ async function callGemini(system, user, temperature, apiKey){
   const res = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
   if(!res.ok){ throw new Error(`Gemini error: ${res.status} ${await res.text()}`); }
   const json = await res.json();
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const parts = json?.candidates?.[0]?.content?.parts || [];
+const text = parts.map(p => (typeof p?.text === "string" ? p.text : "")).join("");
+return text;
+
 }
 
 
@@ -268,7 +271,6 @@ const system =
 }`;
 
     const user = `{ "prompt": "${prompt}", "power": 20 }`;
-    let rawJson = await callGemini(system, user, temperature, apiKey);
     let rawJson = await callGemini(system, user, temperature, apiKey);
 let jsonText = extractFirstJsonObject(rawJson);
 
@@ -428,13 +430,17 @@ export const onResolvePhase = functions.firestore
             console.log(`[${context.params.matchId}] 스택 처리 시작...`);
             
             const { newState, logs } = processStack(after);
-            
-            // 처리 결과와 로그를 Firestore에 업데이트
-            const finalState = {
-                ...newState,
-                logs: FieldValue.arrayUnion(...logs),
-                phase: 'end' // 스택 처리가 끝났으므로 'end' phase로 전환
-            };
+
+// logs가 없을 때 arrayUnion 호출 회피
+const updateLogs = (logs && logs.length > 0)
+  ? { logs: FieldValue.arrayUnion(...logs) }
+  : {};
+
+await change.after.ref.update({
+  ...newState,
+  ...updateLogs,
+  phase: 'end'
+});
 
             await change.after.ref.update(finalState);
             console.log(`[${context.params.matchId}] 스택 처리 완료.`);
