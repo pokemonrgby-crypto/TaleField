@@ -48,11 +48,8 @@ btnSave.addEventListener("click", async ()=>{
 })();
 
 // ====== 생성(Gen) 탭 ======
-const elTheme = $("#gen-theme");
-const elAttr  = $("#gen-attribute");
-const elRole  = $("#gen-role");
-const elStyle = $("#gen-style");
-const elRarity= $("#gen-rarity");
+// ANCHOR: gen-logic-refactor
+const elPrompt = $("#gen-prompt");
 const elCount = $("#gen-count");
 const elPower = $("#gen-power");
 const elTemp  = $("#gen-temp");
@@ -70,13 +67,15 @@ btnGen.addEventListener("click", async ()=>{
   try{
     setStatus("생성 중…");
     const u = await authReady; if(!u) throw new Error("로그인이 필요해.");
+    const promptText = elPrompt.value.trim();
+    if (promptText.length < 5) {
+      setStatus("프롬프트를 5자 이상 입력해주세요.");
+      return;
+    }
+
     const params = {
+      prompt: promptText,
       count: Number(elCount.value||6),
-      theme: elTheme.value||"",
-      attribute: elAttr.value||undefined,
-      role: elRole.value||undefined,
-      playStyle: elStyle.value||undefined,
-      rarityTarget: elRarity.value||undefined,
       powerCap: Number(elPower.value||10),
       temperature: Number(elTemp.value||0.8)
     };
