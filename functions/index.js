@@ -102,7 +102,7 @@ const GenCardReqSchema = z.object({
 
 // --- Gemini API 호출 헬퍼 ---
 async function callGemini(system, user, temperature, apiKey){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const url = `https://generativelaanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const body = {
     contents: [{ role:"user", parts:[{ text:`[SYSTEM]\n${system}\n\n[USER]\n${user}` }] }],
     generationConfig: { temperature, responseMimeType: "application/json" }
@@ -228,32 +228,48 @@ export const genCard = functions
 
     const validMarkers = ["취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명"];
     const system =
-`당신은 천재 카드 게임 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래 스키마에 맞는 카드 1장을 설계합니다.
-결과는 반드시 **JSON 객체** 형식으로만 출력해야 합니다.
+`당신은 천재 카드 게임 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래 [출력 예시]와 **완벽하게 동일한 JSON 형식**으로 카드 1장을 설계합니다.
 
 [매우 중요: 기본 필드 규칙]
-- **type**: "skill", "spell", "attachment" 중 하나.
-- **rarity**: "normal", "rare", "epic", "legend" 중 하나.
-- **attribute**: "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
-- **cooldownTurns**: 반드시 포함되어야 하는 숫자. (예: 0)
+- type: "skill", "spell", "attachment" 중 하나.
+- rarity: "normal", "rare", "epic", "legend" 중 하나.
+- attribute: "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
+- cooldownTurns: 숫자. (예: 0)
 
-[매우 중요: DSL(효과) 규칙 및 예시]
-- **dsl**은 아래 Op 객체들의 배열입니다. 각 Op는 'op' 키를 가집니다.
-- **damage**: 피해. \`{ "op": "damage", "target": "적1", "amount": 5 }\`
-  - **onHit**: 피격 시 추가 효과. \`{ "op": "damage", ..., "onHit": [{ "op": "draw", "target": "자신", "count": 1 }] }\`
-- **draw**: 카드 뽑기. **(매우 중요: 'count' 키를 사용해야 합니다!)** \`{ "op": "draw", "target": "자신", "count": 2 }\`
-- **shield**: 보호막. \`{ "op": "shield", "target": "자신", "amount": 10 }\`
-- **heal**: 회복. \`{ "op": "heal", "target": "아군1", "amount": 8 }\`
-- **addMarker**: 상태이상 부여. \`{ "op": "addMarker", "target": "적1", "name": "취약", "turns": 2 }\`
-- **lifesteal**: 흡혈. \`{ "op": "lifesteal", "target": "적1", "amount": 4 }\`
-- **if**: 조건문. \`{ "op": "if", "cond": "caster.hp < 10", "then": [{...}], "else": [{...}] }\`
-- **addModifier**: 강화 효과. \`{ "op": "addModifier", "type": "damage_boost", "value": 3, "turns": 1 }\`
+[매우 중요: DSL(효과) 규칙]
+- dsl은 Op 객체들의 배열입니다. 각 Op는 'op' 키를 가집니다.
+- damage: 피해. amount 사용. onHit 가능.
+- draw: 카드 뽑기. **count 키 사용.**
+- addMarker의 name은 반드시 허용된 목록(${JSON.stringify(validMarkers)})에 있어야 합니다.
+
+[출력 예시]
+{
+  "name": "화염 작렬",
+  "type": "spell",
+  "rarity": "rare",
+  "attribute": "fire",
+  "keywords": ["광역", "조건부"],
+  "cost": 4,
+  "cooldownTurns": 1,
+  "text": "모든 적에게 3의 피해를 줍니다. 내 체력이 10 이하라면, 대신 5의 피해를 줍니다.",
+  "dsl": [
+    {
+      "op": "if",
+      "cond": "caster.hp <= 10",
+      "then": [
+        { "op": "damage", "target": "allEnemies", "amount": 5 }
+      ],
+      "else": [
+        { "op": "damage", "target": "allEnemies", "amount": 3 }
+      ]
+    }
+  ]
+}
 
 [요구사항]
-- **위의 [매우 중요] 규칙들을 반드시, 정확하게 지켜주세요.** 특히 dsl 내부 객체들의 키 이름을 틀리지 마세요.
+- **[출력 예시]와 동일한 JSON 키와 구조를 반드시 지켜주세요.**
 - **단 1개의 카드**만 생성하고, 완벽한 JSON 객체 형식으로 출력하십시오.
-- **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**
-- **'addMarker'의 'name'은 다음 중 하나여야 합니다:** ${JSON.stringify(validMarkers)}`;
+- **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
 
     const user = `{ "prompt": "${params.prompt}", "powerCap": ${params.powerCap} }`;
 
