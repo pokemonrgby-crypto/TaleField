@@ -35,6 +35,19 @@ jobs:
           };
           EOF
 
+      - name: Validate Firebase secrets (fail if any is missing)
+        run: |
+          check() { [ -n "$1" ] || { echo "::error::Missing secret $2"; exit 1; }; }
+          check "${{ secrets.FB_API_KEY }}" FB_API_KEY
+          check "${{ secrets.FB_AUTH_DOMAIN }}" FB_AUTH_DOMAIN
+          check "${{ secrets.FB_PROJECT_ID }}" FB_PROJECT_ID
+          check "${{ secrets.FB_STORAGE_BUCKET }}" FB_STORAGE_BUCKET
+          check "${{ secrets.FB_MESSAGING_SENDER_ID }}" FB_MESSAGING_SENDER_ID
+          check "${{ secrets.FB_APP_ID }}" FB_APP_ID
+          check "${{ secrets.GCP_SA_KEY }}" GCP_SA_KEY
+          check "${{ secrets.FIREBASE_PROJECT_ID }}" FIREBASE_PROJECT_ID
+
+
       - name: Install Functions deps
         run: |
           if [ -d "functions" ]; then
