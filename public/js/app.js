@@ -5,6 +5,7 @@ import { state, setUser, setRoom } from "./state.js";
 import { createRoom, watchRooms } from "./tabs/home.js";
 import { loadMyCards, submitSelectedCards } from "./tabs/cards.js";
 import { initGameView } from "./tabs/game.js";
+import { watchChat } from "./chat.js";
 
 // 탭 전환
 document.querySelectorAll(".tabs button").forEach(btn=>{
@@ -17,7 +18,10 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
     }
     if (btn.dataset.tab === "game") {
       initGameView();
+      try{ window.__stopChat && window.__stopChat(); }catch{}
+      window.__stopChat = watchChat();
     }
+
   });
 });
 
@@ -39,3 +43,5 @@ state.roomId && ($("#currentRoomId").textContent = state.roomId);
 
 // 언로드 시 정리
 window.addEventListener("beforeunload", ()=> { try{ stopRooms && stopRooms(); }catch{} });
+window.addEventListener("beforeunload", ()=>{ try{ window.__stopChat && window.__stopChat(); }catch{} });
+
