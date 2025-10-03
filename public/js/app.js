@@ -1,12 +1,11 @@
 // public/js/app.js
 import {
-  auth, authReady, signInWithGoogle, signOutUser,
-  needNickname, claimNickname, db
+  auth,
+  needNickname, claimNickname,
+  signInWithGoogle, signOutUser
 } from "./firebase.js";
-// callGenCards 대신 새로운 함수를 사용하게 되므로 firebase.js 수정 필요
 import { callGenCard } from "./firebase.js"; 
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { initMyCardsTab, loadMyCards } from "./tabs/my-cards.js";
 
 
@@ -37,13 +36,41 @@ onAuthStateChanged(auth, user => {
   $("#btn-google").style.display = loggedIn ? "none" : "";
   $("#btn-logout").style.display = loggedIn ? "" : "none";
   if (loggedIn) {
-    checkNickname();
+    checkNickname(); // 이제 이 함수를 찾을 수 있습니다.
     loadMyCards();
   }
 });
 
-// --- UI: 닉네임 모달 (이전과 동일) ---
-// ...
+// --- UI: 닉네임 모달 (누락되었던 부분) ---
+const nicknameModal = $("#nickname-modal");
+const nicknameInput = $("#nickname-input");
+const nicknameSaveBtn = $("#nickname-save");
+const nicknameError = $("#nickname-error");
+
+// checkNickname 함수 정의
+async function checkNickname() {
+  const s = await needNickname();
+  if (s.need) {
+    nicknameModal.style.display = "flex";
+  }
+}
+
+nicknameSaveBtn.addEventListener("click", async () => {
+  nicknameError.textContent = "";
+  const nick = nicknameInput.value.trim();
+  if (nick.length < 2 || nick.length > 12) {
+    nicknameError.textContent = "2~12자 사이로 입력해주세요.";
+    return;
+  }
+  try {
+    if (!currentUser) throw new Error("로그인이 필요합니다.");
+    await claimNickname(currentUser.uid, nick);
+    nicknameModal.style.display = "none";
+  } catch (e) {
+    nicknameError.textContent = e.message || "저장 중 오류가 발생했습니다.";
+  }
+});
+
 
 // ====== 생성(Gen) 탭 로직 ======
 const genPromptEl = $("#gen-prompt");
@@ -77,7 +104,6 @@ function renderGenResultCardTile(card) {
     return el;
 }
 
-
 genBtn.addEventListener("click", async () => {
   try {
     setGenStatus("AI가 카드를 생성하는 중...");
@@ -96,15 +122,13 @@ genBtn.addEventListener("click", async () => {
       temperature: Number(genTempEl.value || 0.8)
     };
     
-    // 변경: 여러 장이 아닌 한 장의 카드 정보를 받음
     const result = await callGenCard(params); 
 
     if (result.ok && result.card) {
-      // 생성된 카드를 결과 그리드의 맨 앞에 추가
       const cardElement = renderGenResultCardTile(result.card);
       genGridEl.prepend(cardElement);
       setGenStatus(`'${result.card.name}' 카드를 생성했습니다! '내 카드' 탭에서도 확인 가능합니다.`);
-      loadMyCards(); // 내 카드 목록 갱신
+      loadMyCards();
     } else {
         throw new Error("AI가 유효한 카드를 반환하지 않았습니다.");
     }
@@ -116,7 +140,6 @@ genBtn.addEventListener("click", async () => {
     genBtn.disabled = false;
   }
 });
-
 
 // --- 앱 초기화 ---
 function initApp() {
