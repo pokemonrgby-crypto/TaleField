@@ -4,11 +4,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFirestore, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-if (!window.firebaseConfig) {
-  console.warn("⚠️ firebaseConfig가 비어있어. index.html의 'firebase-config' 앵커에 값을 붙여넣어줘.");
+if (!window.__FBCONFIG__) {
+  console.warn("⚠️ window.__FBCONFIG__ 가 비어있어. CI에서 public/firebase-config.js가 생성되는지 확인해줘.");
 }
 
-export const app  = initializeApp(window.firebaseConfig || {});
+export const app  = initializeApp(window.__FBCONFIG__ || {});
+
 export const auth = getAuth(app);
 export const db   = getFirestore(app);
 export const ts   = serverTimestamp;
