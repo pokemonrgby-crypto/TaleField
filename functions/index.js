@@ -14,7 +14,7 @@ import { processStack } from "./src/engine.js";
 const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-1.5-flash";
 const DAILY_CARD_LIMIT = 15;
 const DAILY_CHAR_LIMIT = 3;
 
@@ -76,7 +76,7 @@ const CardSchema = z.object({
   attribute: z.enum(["fire","water","wind","earth","light","dark","neutral"]),
   keywords: z.array(z.string()).max(4),
   cost: z.number().int().min(0),
-  cooldownTurns: z.number().int().min(0),
+  cooldownTurns: z.number().int().min(0).default(0), // AI가 자주 누락하여 기본값 추가
   dsl: z.array(Op).min(1).max(10),
   text: z.string(),
   checks: z.object({
@@ -231,23 +231,29 @@ export const genCard = functions
 `당신은 천재 카드 게임 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래 스키마에 맞는 카드 1장을 설계합니다.
 결과는 반드시 **JSON 객체** 형식으로만 출력해야 합니다.
 
-[출력 JSON 스키마 및 규칙]
-- **type**: 다음 중 하나의 값이어야 합니다: "skill", "spell", "attachment"
-- **rarity**: 다음 중 하나의 값이어야 합니다: "normal", "rare", "epic", "legend"
-- **attribute**: 다음 중 하나의 값이어야 합니다: "fire", "water", "wind", "earth", "light", "dark", "neutral"
-- **dsl**: 아래 [DSL 명세]에 정의된 Op 객체의 배열이어야 합니다.
-- **text**: 카드의 효과를 설명하는 한글 문자열입니다.
-- **기타 필드**: name(string), keywords(string[]), cost(number), cooldownTurns(number)
+[매우 중요: 기본 필드 규칙]
+- **type**: "skill", "spell", "attachment" 중 하나.
+- **rarity**: "normal", "rare", "epic", "legend" 중 하나.
+- **attribute**: "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
+- **cooldownTurns**: 반드시 포함되어야 하는 숫자. (예: 0)
 
-[DSL 명세]
-- Op 종류: damage(최대 30, onHit 가능), shield, heal, draw, discard, addMarker, if, lifesteal, reflect, addModifier, execute, onDeath
-- **새로운 기믹(lifesteal, reflect, onHit, execute 등)을 적극적으로 활용**하여 흥미로운 카드를 설계하십시오.
-- 'addMarker'의 'name'은 다음 중 하나여야 합니다: ${JSON.stringify(validMarkers)}
+[매우 중요: DSL(효과) 규칙 및 예시]
+- **dsl**은 아래 Op 객체들의 배열입니다. 각 Op는 'op' 키를 가집니다.
+- **damage**: 피해. \`{ "op": "damage", "target": "적1", "amount": 5 }\`
+  - **onHit**: 피격 시 추가 효과. \`{ "op": "damage", ..., "onHit": [{ "op": "draw", "target": "자신", "count": 1 }] }\`
+- **draw**: 카드 뽑기. **(매우 중요: 'count' 키를 사용해야 합니다!)** \`{ "op": "draw", "target": "자신", "count": 2 }\`
+- **shield**: 보호막. \`{ "op": "shield", "target": "자신", "amount": 10 }\`
+- **heal**: 회복. \`{ "op": "heal", "target": "아군1", "amount": 8 }\`
+- **addMarker**: 상태이상 부여. \`{ "op": "addMarker", "target": "적1", "name": "취약", "turns": 2 }\`
+- **lifesteal**: 흡혈. \`{ "op": "lifesteal", "target": "적1", "amount": 4 }\`
+- **if**: 조건문. \`{ "op": "if", "cond": "caster.hp < 10", "then": [{...}], "else": [{...}] }\`
+- **addModifier**: 강화 효과. \`{ "op": "addModifier", "type": "damage_boost", "value": 3, "turns": 1 }\`
 
 [요구사항]
-- **[중요] type, rarity, attribute 필드는 위에 명시된 영문 소문자 값 목록 중에서만 선택해야 합니다.**
+- **위의 [매우 중요] 규칙들을 반드시, 정확하게 지켜주세요.** 특히 dsl 내부 객체들의 키 이름을 틀리지 마세요.
 - **단 1개의 카드**만 생성하고, 완벽한 JSON 객체 형식으로 출력하십시오.
-- **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
+- **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**
+- **'addMarker'의 'name'은 다음 중 하나여야 합니다:** ${JSON.stringify(validMarkers)}`;
 
     const user = `{ "prompt": "${params.prompt}", "powerCap": ${params.powerCap} }`;
 
@@ -285,7 +291,8 @@ export const genCard = functions
 
     } catch (e) {
       console.warn("Skipping invalid card from model:", cardData, e.issues);
-      throw new HttpsError("internal", "AI가 유효하지 않은 형식의 카드를 생성했습니다.");
+      const errorMessage = e.errors?.[0]?.message ? `${e.errors[0].path.join('.')} - ${e.errors[0].message}` : "AI가 유효하지 않은 형식의 카드를 생성했습니다.";
+      throw new HttpsError("internal", errorMessage, { raw: rawJson });
     }
 });
 
