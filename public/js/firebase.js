@@ -6,9 +6,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFirestore, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-if (!window.__FBCONFIG__) {
-  console.warn("⚠️ window.__FBCONFIG__ 가 비어있어. CI에서 public/firebase-config.js가 생성되는지 확인해줘.");
-}
 
 // Firebase 자동 설정(JSON) 우선, 실패 시 window.__FBCONFIG__ 허용
 let cfg = null;
