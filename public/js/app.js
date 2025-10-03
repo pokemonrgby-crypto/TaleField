@@ -136,8 +136,9 @@ function renderGenResultCardTile(card) {
     return el;
 }
 
+// ANCHOR: public/js/app.js (genBtn event listener)
 genBtn.addEventListener("click", async () => {
-  // ANCHOR: character-gen-bug-fix
+  // ANCHOR: card-gen-disable-button-fix
   if (genBtn.disabled) return; // 중복 클릭 방지
 
   setGenStatus("AI가 카드를 생성하는 중...");
