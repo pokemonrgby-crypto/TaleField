@@ -94,10 +94,13 @@ export async function needNickname() {
 }
 
 // ---------- Functions ----------
+// ---------- Functions ----------
 export const fx = getFunctions(app, "us-central1");
 
-export async function callGenCards(params){
-  const fn = httpsCallable(fx, "genCards");
+// callGenCards를 callGenCard로 변경
+export async function callGenCard(params){
+  // 함수 이름도 genCards에서 genCard로 변경 (백엔드와 일치)
+  const fn = httpsCallable(fx, "genCard"); 
   const res = await fn(params);
-  return res.data; // {ok, count, cards}
+  return res.data; // {ok, card}
 }
