@@ -4,11 +4,14 @@ import {
   needNickname, claimNickname,
   signInWithGoogle, signOutUser
 } from "./firebase.js";
-import { callGenCard } from "./firebase.js"; 
+import { callGenCard, callCreateRoom, callJoinRoom } from "./firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { initMyCardsTab, loadMyCards } from "./tabs/my-cards.js";
 import { initCharacterGenTab } from "./tabs/character-gen.js";
 import { initMyCharactersTab, loadMyCharacters } from "./tabs/my-characters.js";
+import { initLobbyTab } from "./tabs/lobby.js";
+import { initRoomTab, leaveRoom, setRoomId } from "./tabs/room.js";
+import { state, setRoom } from "./state.js";
 
 // --- DOM Elements ---
 const $ = (q) => document.querySelector(q);
@@ -17,14 +20,43 @@ const $$ = (q) => document.querySelectorAll(q);
 let currentUser = null;
 
 // --- UI: 탭 전환 ---
+function setActiveTab(tabId) {
+  $$(".bottom-nav__tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
+  $$("main section").forEach(s => s.classList.toggle("active", s.id === tabId));
+  window.scrollTo(0, 0);
+}
+
 $$(".bottom-nav__tabs button").forEach(btn => {
   btn.addEventListener("click", () => {
-    const activeTab = btn.dataset.tab;
-    $$(".bottom-nav__tabs button").forEach(b => b.classList.toggle("active", b === btn));
-    $$("main section").forEach(s => s.classList.toggle("active", s.id === activeTab));
-    window.scrollTo(0, 0);
+    const tabId = btn.dataset.tab;
+    // 룸에서 나갈 때 #lobby로 이동
+    if (state.roomId && tabId !== 'view-room') {
+      history.pushState(null, '', '#lobby');
+      leaveRoom(); // 방 나가는 로직 추가
+    } else if (tabId === 'view-lobby') {
+       history.pushState(null, '', '#lobby');
+    }
+    setActiveTab(tabId);
   });
 });
+
+
+// --- 라우팅 ---
+function handleRouteChange() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#room/')) {
+    const roomId = hash.substring(6);
+    setRoomId(roomId);
+    setActiveTab('view-room');
+  } else {
+    setRoomId(null);
+    setActiveTab('view-lobby');
+  }
+}
+
+window.addEventListener('hashchange', handleRouteChange);
+window.addEventListener('load', handleRouteChange);
+
 
 // --- UI: 인증 ---
 $("#btn-google").addEventListener("click", signInWithGoogle);
@@ -39,6 +71,9 @@ onAuthStateChanged(auth, user => {
     checkNickname();
     loadMyCards();
     loadMyCharacters();
+  } else {
+    // 로그아웃 시 로비로
+    window.location.hash = '#lobby';
   }
 });
 
@@ -78,7 +113,7 @@ const genBtn = $("#btn-gen-cards");
 const genGridEl = $("#gen-results");
 const genStatusEl = $("#gen-status");
 
-function setGenStatus(text, isError = false) { 
+function setGenStatus(text, isError = false) {
   genStatusEl.textContent = text;
   genStatusEl.style.color = isError ? 'var(--danger)' : 'var(--ink-dim)';
 }
@@ -102,15 +137,18 @@ function renderGenResultCardTile(card) {
 }
 
 genBtn.addEventListener("click", async () => {
+  // ANCHOR: character-gen-bug-fix
+  if (genBtn.disabled) return; // 중복 클릭 방지
+
+  setGenStatus("AI가 카드를 생성하는 중...");
+  genBtn.disabled = true;
+
   try {
-    setGenStatus("AI가 카드를 생성하는 중...");
-    genBtn.disabled = true;
     if (!currentUser) throw new Error("로그인이 필요합니다.");
-    
+
     const promptText = genPromptEl.value.trim();
     if (promptText.length < 5) {
-      setGenStatus("프롬프트를 5자 이상 입력해주세요.", true);
-      return;
+      throw new Error("프롬프트를 5자 이상 입력해주세요.");
     }
 
     const params = {
@@ -118,8 +156,8 @@ genBtn.addEventListener("click", async () => {
       powerCap: 20, // 20으로 고정
       temperature: Number(genTempEl.value || 0.8)
     };
-    
-    const result = await callGenCard(params); 
+
+    const result = await callGenCard(params);
 
     if (result.ok && result.card) {
       const cardElement = renderGenResultCardTile(result.card);
@@ -127,7 +165,7 @@ genBtn.addEventListener("click", async () => {
       setGenStatus(`'${result.card.name}' 카드를 생성했습니다! '내 카드' 탭에서도 확인 가능합니다.`);
       loadMyCards();
     } else {
-        throw new Error("AI가 유효한 카드를 반환하지 않았습니다.");
+        throw new Error(result.error || "AI가 유효한 카드를 반환하지 않았습니다.");
     }
 
   } catch (e) {
@@ -138,10 +176,13 @@ genBtn.addEventListener("click", async () => {
   }
 });
 
+
 // --- 앱 초기화 ---
 function initApp() {
     initMyCardsTab();
     initCharacterGenTab();
     initMyCharactersTab();
+    initLobbyTab();
+    initRoomTab();
 }
 initApp();
