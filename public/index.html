@@ -1,169 +1,132 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="
-  default-src 'self';
-  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com;
-  connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com https://firebasestorage.googleapis.com https://firebaseinstallations.googleapis.com;
-  frame-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com;
-  img-src 'self' data: https:;
-  style-src 'self' 'unsafe-inline';
-">
-
-
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- CSP: Firebase/GSI/Functions 허용 -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com;
+    connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://us-central1-*.cloudfunctions.net;
+    frame-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com;
+    img-src 'self' data: https:;
+    style-src 'self' 'unsafe-inline';
+  ">
+
   <title>TaleField — MVP</title>
-  <style>
-    :root { --bg:#0b0f14; --panel:#121821; --ink:#e6f3ff; --ink-dim:#a8bfd6; --accent:#79c2ff; --line:#223046; --danger:#ff6b6b; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
-    .topbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; padding:12px 16px; background:#0d131b; border-bottom:1px solid var(--line); }
-    .topbar h1 { font-size:18px; margin:0; }
-    .topbar .user { margin-left:auto; color:var(--ink-dim); font-size:12px; }
-    main { max-width:1100px; margin:0 auto; padding:16px; }
-    .tabs { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
-    .tabs button { background:#162232; color:var(--ink); border:1px solid var(--line); padding:8px 12px; border-radius:10px; cursor:pointer; }
-    .tabs button.active { outline:2px solid var(--accent); }
-    .tab { display:none; }
-    .tab.active { display:block; }
-    .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px; }
-    .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .row.spread { justify-content:space-between; }
-    .list, .grid, .hand { list-style:none; padding:0; margin:0; }
-    .list li { padding:10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:10px; margin-top:10px; }
-    .cardbox { border:1px solid var(--line); border-radius:12px; padding:10px; background:#0f151e; display:flex; gap:8px; }
-    .cardbox h4 { margin:0 0 4px 0; font-size:14px; }
-    .hint { color:var(--ink-dim); font-size:12px; }
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .log { background:#0f151e; border:1px solid var(--line); border-radius:12px; padding:10px; height:260px; overflow:auto; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--ink-dim); }
-    .react-queue { min-height:44px; display:flex; gap:8px; align-items:center; }
-    .react-pill { border:1px dashed var(--line); border-radius:999px; padding:6px 10px; }
-    input, button, select { background:#0f151e; color:var(--ink); border:1px solid var(--line); padding:8px 10px; border-radius:10px; }
-    input[type="number"] { width:90px; }
-    button.primary { background:#183350; border-color:#274767; }
-    .toast { position:fixed; right:16px; bottom:16px; background:#132233; color:var(--ink); border:1px solid var(--line); padding:10px 14px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,.35); display:none; }
-    @media (max-width:900px){ .grid-2 { grid-template-columns:1fr; } }
-  </style>
+
+  <!-- 속성/카드 UI 토큰 -->
   <style id="theme-tokens">
-:root{
-  --attr-fire:#E4572E; --attr-water:#3A86FF; --attr-wind:#2FBF71;
-  --attr-earth:#A07949; --attr-light:#E9D758; --attr-dark:#6C5CE7;
-  --attr-neutral:#8D99AE;
+  :root{
+    --attr-fire:#E4572E; --attr-water:#3A86FF; --attr-wind:#2FBF71;
+    --attr-earth:#A07949; --attr-light:#E9D758; --attr-dark:#6C5CE7;
+    --attr-neutral:#8D99AE;
+    --radius-16:16px; --elev-1:0 2px 10px rgba(0,0,0,.12);
+  }
+  body{ font-family: system-ui, AppleSDGothicNeo, 'Segoe UI', Roboto, sans-serif; margin:0; }
+  header{ display:flex; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid #ddd; position:sticky; top:0; background:#fff; }
+  header .tabs button{ padding:8px 12px; border-radius:12px; border:1px solid #ccc; background:#f7f7f7; }
+  section{ display:none; padding:14px; }
+  section.active{ display:block; }
+  .card-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap:12px; }
+  .card{ border-radius:var(--radius-16); box-shadow:var(--elev-1); border:1px solid #ddd; overflow:hidden; }
+  .card--character{ border:2px solid var(--attr-neutral); }
+  .card--skill .card__title{ color:#fff; padding:.45rem .6rem; }
+  .card--character[data-attr="fire"]{ border-color:var(--attr-fire);}
+  .card--character[data-attr="water"]{ border-color:var(--attr-water);}
+  .card--character[data-attr="wind"]{ border-color:var(--attr-wind);}
+  .card--character[data-attr="earth"]{ border-color:var(--attr-earth);}
+  .card--character[data-attr="light"]{ border-color:var(--attr-light);}
+  .card--character[data-attr="dark"]{ border-color:var(--attr-dark);}
+  .card--skill[data-attr="fire"] .card__title{ background:var(--attr-fire);}
+  .card--skill[data-attr="water"] .card__title{ background:var(--attr-water);}
+  .card--skill[data-attr="wind"] .card__title{ background:var(--attr-wind);}
+  .card--skill[data-attr="earth"] .card__title{ background:var(--attr-earth);}
+  .card--skill[data-attr="light"] .card__title{ background:var(--attr-light); color:#222;}
+  .card--skill[data-attr="dark"] .card__title{ background:var(--attr-dark);}
+  .muted{ color:#666; font-size:.9rem; }
+  .toolbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  .tag{ font-size:.8rem; background:#eee; border-radius:999px; padding:2px 8px; margin-right:6px; }
+  .danger{ color:#b00020; } .ok{ color:#0a8033; }
+  .btn{ padding:8px 12px; border-radius:10px; border:1px solid #ccc; background:#fafafa; cursor:pointer; }
+  .btn.primary{ background:#222; color:#fff; border-color:#111; }
+  .right{ margin-left:auto; }
+  </style>
 
-  --radius-16:16px; --elev-1:0 2px 10px rgba(0,0,0,.12);
-}
-.card--character{ border:2px solid var(--attr-neutral); border-radius:var(--radius-16); box-shadow:var(--elev-1);}
-.card--skill{ border-radius:var(--radius-16); box-shadow:var(--elev-1);}
-.card--skill .card__title{ color:#fff; padding:.4rem .6rem; border-top-left-radius:var(--radius-16); border-top-right-radius:var(--radius-16); }
-.card--character[data-attr="fire"]{ border-color:var(--attr-fire);}
-.card--character[data-attr="water"]{ border-color:var(--attr-water);}
-.card--character[data-attr="wind"]{ border-color:var(--attr-wind);}
-.card--character[data-attr="earth"]{ border-color:var(--attr-earth);}
-.card--character[data-attr="light"]{ border-color:var(--attr-light);}
-.card--character[data-attr="dark"]{ border-color:var(--attr-dark);}
-.card--skill[data-attr="fire"] .card__title{ background:var(--attr-fire);}
-.card--skill[data-attr="water"] .card__title{ background:var(--attr-water);}
-.card--skill[data-attr="wind"] .card__title{ background:var(--attr-wind);}
-.card--skill[data-attr="earth"] .card__title{ background:var(--attr-earth);}
-.card--skill[data-attr="light"] .card__title{ background:var(--attr-light); color:#222;}
-.card--skill[data-attr="dark"] .card__title{ background:var(--attr-dark);}
-</style>
-
+  <script src="./js/firebase-config.js"></script>
+  <script type="module" src="./js/firebase.js"></script>
+  <script type="module" src="./js/engine.js"></script>
+  <script type="module" src="./js/app.js"></script>
 </head>
 <body>
-  <header class="topbar">
-  <h1>🥥 TaleField (MVP)</h1>
-  <div class="row" style="margin-left:auto; gap:8px;">
-    <button id="btnGoogleLogin">Google 로그인</button>
-    <button id="btnLogout" style="display:none;">로그아웃</button>
-    <div class="user" id="userBox">로그인 중…</div>
+  <header>
+    <strong>TaleField</strong>
+    <div class="tabs">
+      <button data-tab="view-lobby">로비</button>
+      <button data-tab="view-room">방/플레이</button>
+      <button data-tab="view-gen">생성(Gen)</button>
+    </div>
+    <div class="right">
+      <button id="btn-google">Google 로그인</button>
+      <button id="btn-logout">로그아웃</button>
+    </div>
+  </header>
+
+  <section id="view-lobby" class="active">
+    <h2>로비</h2>
+    <p class="muted">방 목록, 참여/생성은 차후 연결. 우선 생성 탭부터 완성할게.</p>
+  </section>
+
+  <section id="view-room">
+    <h2>방/플레이</h2>
+    <p class="muted">턴/페이즈/스택/지연효과는 engine.js로 테스트 가능. 서버 권위는 이후 Functions로 이전.</p>
+    <div id="sandbox"></div>
+  </section>
+
+  <section id="view-gen">
+    <h2>카드 생성 (Gemini 2.5 Flash)</h2>
+
+    <div class="toolbar">
+      <input id="gen-theme" placeholder="세계관/테마" size="24"/>
+      <select id="gen-attribute">
+        <option value="">속성(any)</option>
+        <option>fire</option><option>water</option><option>wind</option>
+        <option>earth</option><option>light</option><option>dark</option><option>neutral</option>
+      </select>
+      <select id="gen-role">
+        <option value="">역할(any)</option>
+        <option>attacker</option><option>tank</option><option>support</option><option>control</option>
+      </select>
+      <select id="gen-style">
+        <option value="">스타일(any)</option>
+        <option>burst</option><option>sustain</option><option>tempo</option><option>combo</option>
+      </select>
+      <select id="gen-rarity">
+        <option value="">희귀도(mixed)</option>
+        <option>normal</option><option>rare</option><option>epic</option><option>legend</option>
+      </select>
+      <label>count <input id="gen-count" type="number" value="6" min="1" max="12" style="width:60px"></label>
+      <label>powerCap <input id="gen-power" type="number" value="10" min="1" max="20" style="width:70px"></label>
+      <label>temp <input id="gen-temp" type="number" step="0.1" min="0" max="1" value="0.8" style="width:70px"></label>
+      <button id="btn-gen-cards" class="btn primary">Generate</button>
+      <button id="btn-accept-selected" class="btn">선택 저장</button>
+      <span id="gen-status" class="muted"></span>
+    </div>
+
+    <div id="gen-results" class="card-grid"></div>
+  </section>
+
+  <!-- 닉네임 모달 -->
+  <div id="nickname-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35);">
+    <div class="card" style="max-width:420px; margin:10vh auto; padding:14px;">
+      <h3>닉네임 설정</h3>
+      <input id="nickname-input" maxlength="12" placeholder="2~12자 닉네임" />
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button id="nickname-save" class="btn primary">저장</button>
+        <span id="nickname-error" class="danger"></span>
+      </div>
+    </div>
   </div>
-</header>
-
-  <main>
-    <nav class="tabs">
-      <button data-tab="home" class="active">홈</button>
-      <button data-tab="cards">카드 선택</button>
-      <button data-tab="game">인게임</button>
-    </nav>
-
-    <section id="tab-home" class="tab active">
-      <div class="panel">
-        <h2>방 만들기</h2>
-        <div class="row">
-          <label>방 제목 <input id="roomTitle" placeholder="예: 형원이의 방" /></label>
-          <label>최대 인원 <input id="roomMax" type="number" value="8" min="2" max="8" /></label>
-          <button id="btnCreateRoom" class="primary">방 생성</button>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="row spread">
-          <h2 style="margin:0">방 목록</h2>
-          <div class="hint">최근 생성 순 · 자동 새로고침</div>
-        </div>
-        <ul id="roomList" class="list"></ul>
-      </div>
-    </section>
-
-    <section id="tab-cards" class="tab">
-      <div class="panel">
-        <div class="row spread">
-          <h2 style="margin:0">내 카드 (승인된 것 5~10장 선택)</h2>
-          <div class="row">
-            <div class="hint">현재 방: <span id="currentRoomId">(없음)</span></div>
-            <button id="btnRefreshCards">새로고침</button>
-          </div>
-        </div>
-        <ul id="myCards" class="grid"></ul>
-        <div class="row spread" style="margin-top:8px;">
-          <div>선택: <strong id="selectedCount">0</strong>장</div>
-          <button id="btnSubmitCards" class="primary">선택 카드 제출</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="tab-game" class="tab">
-      <div class="panel">
-        <h2>인게임</h2>
-        <div class="row" style="margin:8px 0;">
-          <button id="btnDraw" class="primary">드로우</button>
-          <button id="btnPass">패스</button>
-          <div class="hint">드로우/패스는 메인 페이즈에만 가능 · 반응 창에서는 불가</div>
-        </div>
-
-    <div class="grid-2">
-          <div>
-            <h3>내 상태</h3>
-            <div id="myState">HP: -, 기력: -, 손패: -</div>
-            <h3>손패</h3>
-            <ul id="myHand" class="hand"></ul>
-          </div>
-          <div>
-            <h3>로그</h3>
-            <div id="logBox" class="log"></div>
-            <h3>반응 큐(최대 2)</h3>
-            <div id="reactQueue" class="react-queue"><span class="hint">(비어있음)</span></div>
-          </div>
-        </div>
-                <div class="panel" style="margin-top:12px;">
-                  <h3>채팅</h3>
-                  <div id="chatLog" class="log" style="height:160px;"></div>
-                  <div class="row" style="margin-top:8px;">
-                    <input id="chatInput" placeholder="메시지 입력…" style="flex:1;" />
-                    <button id="btnSendChat" class="primary">전송</button>
-                  </div>
-                  <div class="hint">5초에 5회 이상 전송 시 잠시 제한돼. 링크 미리보기 안 함, 텍스트만 표시.</div>
-                </div>
-
-      </div>
-    </section>
-  </main>
-
-  <div id="toast" class="toast"></div>
-  <script src="js/firebase-config.js"></script>
-
-  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
