@@ -1,76 +1,132 @@
 // functions/src/engine.js
 
-// 시드 기반 난수 생성기 (결과 재현을 위해)
+/**
+ * 시드 기반의 예측 가능한 난수 생성기 (RNG)
+ * @param {number} seed - 재현 가능한 결과를 위한 시드 숫자
+ * @returns {() => number} - 0과 1 사이의 부동소수점 숫자를 반환하는 함수
+ */
 function createRNG(seed) {
     let s = seed % 2147483647;
     if (s <= 0) s += 2147483646;
     return () => {
-        s = s * 16807 % 2147483647;
+        s = (s * 16807) % 2147483647;
         return (s - 1) / 2147483646;
     };
 }
 
 /**
- * 스택을 처리하여 게임 상태를 변경하고 로그를 생성합니다.
+ * 동적 표현식(expr)을 현재 게임 상태를 기반으로 실제 값으로 변환합니다.
+ * @param {object | number} valueOrExpr - 숫자 또는 표현식 객체
+ * @param {object} state - 현재 매치 상태
+ * @param {string} casterUid - 시전자 UID
+ * @returns {number} - 계산된 실제 값
+ */
+function evaluate(valueOrExpr, state, casterUid) {
+    if (typeof valueOrExpr !== 'object' || !valueOrExpr.expr) {
+        return valueOrExpr; // 이미 숫자 값인 경우 그대로 반환
+    }
+
+    const expr = valueOrExpr.expr;
+    const caster = state.players[casterUid];
+
+    // 예시: "caster.discardPile.count" -> 버린 카드 수
+    if (expr === "caster.discardPile.count") {
+        return state.discardPile.length;
+    }
+    // 추가적인 동적 값 표현식을 여기에 구현할 수 있습니다.
+    // 예: caster.hp, target.markers.length 등
+
+    return 0; // 해석 실패 시 기본값
+}
+
+
+/**
+ * Firestore에 기록된 스택을 처리하여 게임 상태를 변경하고 로그를 생성합니다.
+ * 이 함수가 전투 시스템의 핵심 두뇌 역할을 합니다.
  * @param {object} matchState - 현재 매치 데이터
- * @returns {{newState: object, logs: string[]}} - 변경된 상태와 실행 로그
+ * @returns {{newState: object, logs: object[]}} - 변경된 상태와 실행 로그
  */
 export function processStack(matchState) {
     const logs = [];
-    let state = JSON.parse(JSON.stringify(matchState)); // 깊은 복사로 원본 불변성 유지
+    let state = JSON.parse(JSON.stringify(matchState)); // 원본 불변성 유지를 위한 깊은 복사
     const rng = createRNG(state.seed);
     const stack = [...state.stack].reverse(); // LIFO 처리를 위해 복사 후 뒤집기
 
     while (stack.length > 0) {
-        const op = stack.pop(); // 스택의 맨 위(이제 배열의 끝)에서 Op를 꺼냄
+        const op = stack.pop(); // 스택의 맨 위에서 Op를 하나씩 꺼냄
         const caster = state.players[op.casterUid];
-        const target = op.targetUid ? state.players[op.targetUid] : null;
+        const target = op.targetUid ? state.players[op.targetUid] : caster; // 타겟이 없으면 자기 자신
 
-        logs.push(`[${caster.nickname}]님의 [${op.cardName || op.op}] 효과 발동!`);
+        const logEntry = {
+            type: 'op_start',
+            caster: caster.nickname,
+            cardName: op.cardName,
+            op: op.op,
+            timestamp: Date.now()
+        };
+        logs.push(logEntry);
 
         switch (op.op) {
-            case 'damage':
-                if (!target) break;
-                const damageAmount = op.amount - (target.shield || 0);
-                if (damageAmount > 0) {
-                    target.hp -= damageAmount;
-                    target.shield = 0;
-                    logs.push(` -> ${target.nickname}님에게 ${damageAmount}의 피해! (남은 HP: ${target.hp})`);
-                } else {
-                    target.shield -= op.amount;
-                    logs.push(` -> ${target.nickname}님의 보호막이 피해를 흡수했습니다. (남은 보호막: ${target.shield})`);
+            case 'damage': {
+                const amount = evaluate(op.amount, state, op.casterUid);
+                target.hp -= amount;
+                logs.push({ ...logEntry, type:'damage', target: target.nickname, amount });
+                break;
+            }
+            case 'heal': {
+                const amount = evaluate(op.amount, state, op.casterUid);
+                target.hp = Math.min(target.maxHp, target.hp + amount);
+                logs.push({ ...logEntry, type:'heal', target: target.nickname, amount });
+                break;
+            }
+            case 'draw': {
+                const count = evaluate(op.count, state, op.casterUid);
+                for (let i = 0; i < count && state.commonDeck.length > 0; i++) {
+                    target.hand.push(state.commonDeck.pop());
+                }
+                logs.push({ ...logEntry, type:'draw', target: target.nickname, count });
+                break;
+            }
+            case 'addMarker': {
+                if (!target.markers) target.markers = [];
+                target.markers.push({ name: op.name, remainingTurns: op.turns });
+                logs.push({ ...logEntry, type:'add_marker', target: target.nickname, marker: op.name, turns: op.turns });
+                break;
+            }
+            case 'if': {
+                const [left, comp, right] = op.cond.split(" ");
+                // 간단한 조건 해석기 (실제로는 더 정교한 파서 필요)
+                const lVal = (left === "caster.hp") ? caster.hp : 0;
+                const rVal = parseInt(right, 10);
+                
+                let result = false;
+                if (comp === '<') result = lVal < rVal;
+                if (comp === '>') result = lVal > rVal;
+                if (comp === '==') result = lVal === rVal;
+
+                logs.push({ ...logEntry, type:'condition', cond: op.cond, result });
+                const toExecute = result ? op.then : op.else;
+                if (toExecute) {
+                    // 실행할 Op들을 스택의 맨 위에 추가 (역순으로 넣어야 순서대로 실행됨)
+                    stack.push(...[...toExecute].reverse().map(nextOp => ({...nextOp, casterUid: op.casterUid, cardName: op.cardName})));
                 }
                 break;
-
-            case 'shield':
-                if (!target) break;
-                target.shield = (target.shield || 0) + op.amount;
-                logs.push(` -> ${target.nickname}님이 보호막 ${op.amount}을 얻었습니다.`);
-                break;
-            
-            case 'heal':
-                 if (!target) break;
-                 target.hp = Math.min(target.maxHp, target.hp + op.amount);
-                 logs.push(` -> ${target.nickname}님이 HP를 ${op.amount} 회복했습니다.`);
-                 break;
-
-            case 'random':
+            }
+            case 'random': {
                 const roll = rng();
-                logs.push(` -> 확률 ${op.chance * 100}% 판정... (결과: ${roll.toFixed(3)})`);
-                if (roll < op.chance) {
-                    logs.push(` -> 성공!`);
-                    // 성공 효과들을 스택의 맨 위에 추가 (역순으로 넣어야 순서대로 실행됨)
-                    if(op.then) stack.push(...[...op.then].reverse());
-                } else {
-                    logs.push(` -> 실패.`);
-                    if(op.else) stack.push(...[...op.else].reverse());
+                const success = roll < op.chance;
+                logs.push({ ...logEntry, type:'random', chance: op.chance, roll, success });
+
+                const toExecute = success ? op.then : op.else;
+                if (toExecute) {
+                    stack.push(...[...toExecute].reverse().map(nextOp => ({...nextOp, casterUid: op.casterUid, cardName: op.cardName})));
                 }
                 break;
-            
-            // ... 다른 op 핸들러들 ...
+            }
         }
     }
     
-    state.stack = []; // 처리 후 스택 비우기
+    // 처리 후 스택 비우기
+    state.stack = []; 
     return { newState: state, logs };
 }
