@@ -39,9 +39,13 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>🥥 TaleField (MVP)</h1>
+  <h1>🥥 TaleField (MVP)</h1>
+  <div class="row" style="margin-left:auto; gap:8px;">
+    <button id="btnGoogleLogin">Google 로그인</button>
+    <button id="btnLogout" style="display:none;">로그아웃</button>
     <div class="user" id="userBox">로그인 중…</div>
-  </header>
+  </div>
+</header>
 
   <main>
     <nav class="tabs">
@@ -88,7 +92,13 @@
     <section id="tab-game" class="tab">
       <div class="panel">
         <h2>인게임</h2>
-        <div class="grid-2">
+        <div class="row" style="margin:8px 0;">
+          <button id="btnDraw" class="primary">드로우</button>
+          <button id="btnPass">패스</button>
+          <div class="hint">드로우/패스는 메인 페이즈에만 가능 · 반응 창에서는 불가</div>
+        </div>
+
+    <div class="grid-2">
           <div>
             <h3>내 상태</h3>
             <div id="myState">HP: -, 기력: -, 손패: -</div>
@@ -102,6 +112,16 @@
             <div id="reactQueue" class="react-queue"><span class="hint">(비어있음)</span></div>
           </div>
         </div>
+                <div class="panel" style="margin-top:12px;">
+                  <h3>채팅</h3>
+                  <div id="chatLog" class="log" style="height:160px;"></div>
+                  <div class="row" style="margin-top:8px;">
+                    <input id="chatInput" placeholder="메시지 입력…" style="flex:1;" />
+                    <button id="btnSendChat" class="primary">전송</button>
+                  </div>
+                  <div class="hint">5초에 5회 이상 전송 시 잠시 제한돼. 링크 미리보기 안 함, 텍스트만 표시.</div>
+                </div>
+
       </div>
     </section>
   </main>
@@ -111,5 +131,6 @@
   <script src="./firebase-config.js"></script>
 
   <script type="module" src="./js/app.js"></script>
+  <script src="./firebase-config.js"></script>
 </body>
 </html>
