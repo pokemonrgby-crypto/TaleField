@@ -513,12 +513,64 @@ export const createRoom = functions
             status: "waiting",
             playerCount: 1,
             playerUids: [uid], // 플레이어 uid 목록 추가
-            players: [{ uid, nickname, isHost: true, ready: false }],
+            players: [{ 
+                uid, 
+                nickname, 
+                isHost: true, 
+                ready: false,
+                characterId: null,
+                selectedCardIds: [],
+                selectedSkills: [],
+            }],
             createdAt: FieldValue.serverTimestamp(),
         };
 
         await roomRef.set(newRoom);
         return { ok: true, roomId: roomRef.id };
+    });
+
+// ANCHOR: functions/index.js (setPlayerReady)
+/**
+ * 플레이어 준비 및 선택 사항 업데이트 함수
+ */
+const SetPlayerReadySchema = z.object({
+    roomId: z.string(),
+    characterId: z.string(),
+    selectedCardIds: z.array(z.string()).min(5).max(10),
+    selectedSkills: z.array(z.string()).length(2),
+    ready: z.boolean(),
+});
+
+export const setPlayerReady = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = context.auth;
+        const { roomId, characterId, selectedCardIds, selectedSkills, ready } = SetPlayerReadySchema.parse(data);
+
+        const roomRef = db.doc(`rooms/${roomId}`);
+
+        return await db.runTransaction(async (tx) => {
+            const roomSnap = await tx.get(roomRef);
+            if (!roomSnap.exists) throw new HttpsError("not-found", "방을 찾을 수 없습니다.");
+            
+            const roomData = roomSnap.data();
+            const playerIndex = roomData.players.findIndex(p => p.uid === uid);
+            if (playerIndex === -1) throw new HttpsError("not-found", "플레이어를 찾을 수 없습니다.");
+
+            // TODO: 사용자가 실제로 해당 캐릭터와 카드를 소유하고 있는지 검증하는 로직 추가
+
+            roomData.players[playerIndex] = {
+                ...roomData.players[playerIndex],
+                characterId,
+                selectedCardIds,
+                selectedSkills,
+                ready
+            };
+
+            tx.update(roomRef, { players: roomData.players });
+            return { ok: true };
+        });
     });
 
 
