@@ -46,6 +46,31 @@
     .toast { position:fixed; right:16px; bottom:16px; background:#132233; color:var(--ink); border:1px solid var(--line); padding:10px 14px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,.35); display:none; }
     @media (max-width:900px){ .grid-2 { grid-template-columns:1fr; } }
   </style>
+  <style id="theme-tokens">
+:root{
+  --attr-fire:#E4572E; --attr-water:#3A86FF; --attr-wind:#2FBF71;
+  --attr-earth:#A07949; --attr-light:#E9D758; --attr-dark:#6C5CE7;
+  --attr-neutral:#8D99AE;
+
+  --radius-16:16px; --elev-1:0 2px 10px rgba(0,0,0,.12);
+}
+.card--character{ border:2px solid var(--attr-neutral); border-radius:var(--radius-16); box-shadow:var(--elev-1);}
+.card--skill{ border-radius:var(--radius-16); box-shadow:var(--elev-1);}
+.card--skill .card__title{ color:#fff; padding:.4rem .6rem; border-top-left-radius:var(--radius-16); border-top-right-radius:var(--radius-16); }
+.card--character[data-attr="fire"]{ border-color:var(--attr-fire);}
+.card--character[data-attr="water"]{ border-color:var(--attr-water);}
+.card--character[data-attr="wind"]{ border-color:var(--attr-wind);}
+.card--character[data-attr="earth"]{ border-color:var(--attr-earth);}
+.card--character[data-attr="light"]{ border-color:var(--attr-light);}
+.card--character[data-attr="dark"]{ border-color:var(--attr-dark);}
+.card--skill[data-attr="fire"] .card__title{ background:var(--attr-fire);}
+.card--skill[data-attr="water"] .card__title{ background:var(--attr-water);}
+.card--skill[data-attr="wind"] .card__title{ background:var(--attr-wind);}
+.card--skill[data-attr="earth"] .card__title{ background:var(--attr-earth);}
+.card--skill[data-attr="light"] .card__title{ background:var(--attr-light); color:#222;}
+.card--skill[data-attr="dark"] .card__title{ background:var(--attr-dark);}
+</style>
+
 </head>
 <body>
   <header class="topbar">
