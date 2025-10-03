@@ -1,10 +1,14 @@
 // functions/index.js
 import fetch from "cross-fetch";
-import * as admin from "firebase-admin";
+// import * as admin from "firebase-admin"; // 이 줄을 주석 처리하거나 삭제합니다.
+import { initializeApp, applicationDefault } from "firebase-admin/app"; // 수정된 부분
+import { getFirestore } from "firebase-admin/firestore"; // 추가된 부분
 import * as functions from "firebase-functions";
 import { z } from "zod";
 
-try { admin.initializeApp(); } catch (_) {}
+
+// try { admin.initializeApp(); } catch (_) {} // 이 줄을 아래와 같이 바꿉니다.
+try { initializeApp(); } catch (_) {} // 수정된 부분
 
 import { defineSecret } from "firebase-functions/params";
 
@@ -224,13 +228,13 @@ export const genCards = functions
     throw new functions.https.HttpsError("internal", "AI 모델이 유효한 카드를 생성하지 못했습니다. 프롬프트를 수정하거나 다시 시도해주세요.");
   }
 
-  const db = admin.firestore();
+  // const db = admin.firestore(); // 이 줄을 아래와 같이 바꿉니다.
+  const db = getFirestore(); // 수정된 부분
   const batch = db.batch();
   for(const c of out){
     batch.set(db.collection("cards").doc(c.id), c, { merge: true });
   }
   await batch.commit();
   
-  // ANCHOR: return-raw-json
   return { ok:true, count: out.length, cards: out, rawJson: rawJson };
 });
