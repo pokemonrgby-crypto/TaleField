@@ -137,19 +137,37 @@ function extractFirstJsonObject(text) {
   throw new Error('Unbalanced JSON braces.');
 }
 
-function normalizeDrawOps(dsl) {
-  // draw에서 amount를 count로 정정
+function normalizeDslOps(dsl) {
+  // draw에서 amount를 count로 정정하고, addMarker의 turns/duration을 정규화합니다.
   for (const op of dsl || []) {
     if (op && typeof op === 'object') {
+      // 1. draw.amount -> draw.count
       if (op.op === 'draw' && 'amount' in op && !('count' in op)) {
         op.count = op.amount;
         delete op.amount;
       }
-      // onHit 내부 재귀
-      if (Array.isArray(op.onHit)) normalizeDrawOps(op.onHit);
-      if (Array.isArray(op.then)) normalizeDrawOps(op.then);
-      if (Array.isArray(op.else)) normalizeDrawOps(op.else);
-      if (Array.isArray(op.actions)) normalizeDrawOps(op.actions);
+      
+      // 2. addMarker 정규화 (핵심 수정)
+      if (op.op === 'addMarker') {
+        if ('duration' in op && !('turns' in op)) {
+            op.turns = op.duration;
+            delete op.duration;
+        }
+        if ('count' in op && !('turns' in op)) {
+            op.turns = op.count;
+            delete op.count;
+        }
+        // turns 속성이 아예 없는 경우 기본값 1 부여
+        if (!('turns' in op)) {
+            op.turns = 1; 
+        }
+      }
+
+      // 3. 재귀적으로 내부 DSL도 처리
+      if (Array.isArray(op.onHit)) normalizeDslOps(op.onHit);
+      if (Array.isArray(op.then)) normalizeDslOps(op.then);
+      if (Array.isArray(op.else)) normalizeDslOps(op.else);
+      if (Array.isArray(op.actions)) normalizeDslOps(op.actions);
     }
   }
 }
@@ -160,20 +178,22 @@ function normalizeAttribute(obj) {
   if (typeof obj.attribute === 'string' && map[obj.attribute]) obj.attribute = map[obj.attribute];
 }
 
+// ANCHOR: functions/index.js (sanitizeCard)
 function sanitizeCard(card) {
   // 기본값 강제: cooldownTurns 없으면 0
   if (typeof card.cooldownTurns !== 'number') card.cooldownTurns = 0;
   // keywords가 문자열 하나로 올 때 배열화
   if (typeof card.keywords === 'string') card.keywords = [card.keywords];
   normalizeAttribute(card);
-  normalizeDrawOps(card.dsl);
+  normalizeDslOps(card.dsl); // 수정된 함수 호출
   return card;
 }
 
+// ANCHOR: functions/index.js (sanitizeCharacter)
 function sanitizeCharacter(ch) {
   normalizeAttribute(ch);
   for (const s of ch.skills || []) {
-    normalizeDrawOps(s.dsl);
+    normalizeDslOps(s.dsl); // 수정된 함수 호출
   }
   return ch;
 }
@@ -300,7 +320,7 @@ try {
 // --- 카드 생성 함수 ---
 export const genCard = functions
   .region("us-central1")
-  .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 60 })
+  .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 90 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
