@@ -280,3 +280,121 @@ export const genCard = functions
       throw new HttpsError("internal", "AI가 유효하지 않은 형식의 카드를 생성했습니다.");
     }
 });
+
+
+// ===========================================
+// ===== 새로운 방/게임 관리 함수들 =====
+// ===========================================
+
+const RoomSchema = z.object({
+    title: z.string().min(2).max(20),
+    maxPlayers: z.number().int().min(2).max(8),
+});
+
+/**
+ * 방 생성 함수
+ */
+export const createRoom = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = context.auth;
+        const { title, maxPlayers } = RoomSchema.parse(data);
+
+        const profileSnap = await db.doc(`profiles/${uid}`).get();
+        const nickname = profileSnap.data()?.nickname;
+        if (!nickname) throw new HttpsError("failed-precondition", "닉네임이 설정되지 않았습니다.");
+
+        // 현재 다른 방에 참여중인지 확인
+        const existingRooms = await db.collection('rooms').where('playerUids', 'array-contains', uid).get();
+        if (!existingRooms.empty) {
+            throw new HttpsError('already-exists', '이미 다른 방에 참여중입니다. 해당 방을 먼저 나와주세요.');
+        }
+
+        const roomRef = db.collection('rooms').doc();
+        const newRoom = {
+            title,
+            maxPlayers,
+            hostUid: uid,
+            hostNickname: nickname,
+            status: "waiting",
+            playerCount: 1,
+            playerUids: [uid], // 플레이어 uid 목록 추가
+            players: [{ uid, nickname, isHost: true, ready: false }],
+            createdAt: FieldValue.serverTimestamp(),
+        };
+
+        await roomRef.set(newRoom);
+        return { ok: true, roomId: roomRef.id };
+    });
+
+
+/**
+ * 빈 방 자동 삭제 (스케줄링)
+ * 매 1시간마다 실행
+ */
+export const cleanupEmptyRooms = functions.pubsub.schedule('every 60 minutes').onRun(async (context) => {
+    const roomsRef = db.collection('rooms');
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    // 1시간이 지났고, 플레이어가 없는 방 조회
+    const snapshot = await roomsRef.where('createdAt', '<=', oneHourAgo).where('playerCount', '==', 0).get();
+
+    if (snapshot.empty) {
+        console.log("삭제할 빈 방이 없습니다.");
+        return null;
+    }
+
+    const batch = db.batch();
+    snapshot.forEach(doc => {
+        console.log(`삭제될 방: ${doc.id}`);
+        batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+    return null;
+});
+
+
+/**
+ * 방 나가기 함수
+ */
+export const leaveRoom = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = context.auth;
+        const { roomId } = z.object({ roomId: z.string() }).parse(data);
+
+        const roomRef = db.doc(`rooms/${roomId}`);
+
+        await db.runTransaction(async (tx) => {
+            const roomSnap = await tx.get(roomRef);
+            if (!roomSnap.exists) return;
+
+            const roomData = roomSnap.data();
+            const players = roomData.players.filter(p => p.uid !== uid);
+
+            if (players.length === 0) {
+                // 마지막 플레이어가 나가면 방 삭제
+                tx.delete(roomRef);
+            } else {
+                const updateData = {
+                    players,
+                    playerUids: FieldValue.arrayRemove(uid),
+                    playerCount: FieldValue.increment(-1),
+                };
+                // 방장이 나갔을 경우, 다음 사람에게 방장 위임
+                if (roomData.hostUid === uid) {
+                    updateData.hostUid = players[0].uid;
+                    updateData.hostNickname = players[0].nickname;
+                    players[0].isHost = true;
+                }
+                tx.update(roomRef, updateData);
+            }
+        });
+
+        return { ok: true };
+    });
+
