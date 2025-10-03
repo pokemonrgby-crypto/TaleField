@@ -162,10 +162,10 @@ export const genCharacter = functions
 
 [요구사항]
 - **CP 규칙 준수**가 가장 중요합니다. 프롬프트에 맞춰 스탯을 창의적으로 분배하십시오.
+- **attribute 필드는 반드시 다음 영문 소문자 값 중 하나여야 합니다: "fire", "water", "wind", "earth", "light", "dark", "neutral"**
 - **새로운 기믹(lifesteal, onHit, execute 등)을 적극적으로 활용**하여 흥미로운 스킬을 설계하십시오.
 - **단 1명의 캐릭터** 정보만 완벽한 JSON 객체 형식으로 출력하십시오.
 - **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
-
     const user = `{ "prompt": "${prompt}", "power": 20 }`;
     let rawJson = await callGemini(system, user, temperature, apiKey);
     const jsonMatch = rawJson.match(/\{.*\}/s);
