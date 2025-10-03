@@ -1,49 +1,143 @@
-// /public/js/app.js
-import { auth, authReady } from "./firebase.js";
-import { setActiveTab, $, toast } from "./ui.js";
-import { state, setUser, setRoom } from "./state.js";
-import { createRoom, watchRooms } from "./tabs/home.js";
-import { loadMyCards, submitSelectedCards } from "./tabs/cards.js";
-import { initGameView } from "./tabs/game.js";
-import { watchChat } from "./chat.js";
+// app.js
+import {
+  auth, authReady, signInWithGoogle, signOutUser,
+  needNickname, claimNickname, callGenCards, db, ts
+} from "./firebase.js";
+import {
+  renderCardTile, seedRandom, simulateApply // from engine.js
+} from "./engine.js";
+import {
+  doc, setDoc, serverTimestamp as _ts
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-// 탭 전환
-document.querySelectorAll(".tabs button").forEach(btn=>{
-  btn.addEventListener("click", async ()=>{
-    document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    setActiveTab(btn.dataset.tab);
-    if (btn.dataset.tab === "cards") {
-      loadMyCards().catch(console.error);
-    }
-    if (btn.dataset.tab === "game") {
-      await authReady;  // 채팅 실시간도 로그인 완료 후 시작
-      initGameView();
-      try{ window.__stopChat && window.__stopChat(); }catch{}
-      window.__stopChat = watchChat();
-    }
+// ----- 헤더 버튼 -----
+const $ = (q)=>document.querySelector(q);
+$("#btn-google").addEventListener("click", signInWithGoogle);
+$("#btn-logout").addEventListener("click", signOutUser);
 
+// ----- 탭 전환 -----
+document.querySelectorAll("header .tabs button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    const id = btn.dataset.tab;
+    document.querySelectorAll("section").forEach(s=>s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
   });
 });
 
-// 사용자 상태 반영
-auth.onAuthStateChanged(u=>{
-  setUser(u || null);
+// ----- 닉네임 모달 -----
+const modal   = $("#nickname-modal");
+const inNick  = $("#nickname-input");
+const btnSave = $("#nickname-save");
+const elErr   = $("#nickname-error");
+
+btnSave.addEventListener("click", async ()=>{
+  elErr.textContent = "";
+  const nick = inNick.value.trim();
+  if(nick.length < 2 || nick.length > 12){ elErr.textContent="2~12자로 해줘."; return; }
+  try{
+    const u = await authReady;
+    if(!u) throw new Error("로그인이 필요해.");
+    await claimNickname(u.uid, nick);
+    modal.style.display = "none";
+  }catch(e){ elErr.textContent = e.message || "저장 실패"; }
 });
 
-// 홈 탭: 방 생성/실시간
-$("#btnCreateRoom").addEventListener("click", ()=> createRoom().catch(console.error));
-await authReady;            // 로그인(익명 포함) 완료까지 대기
-const stopRooms = watchRooms();
+(async ()=>{
+  const s = await needNickname();
+  if(s.need){ modal.style.display = "block"; }
+})();
 
-// 카드 탭 동작
-$("#btnRefreshCards").addEventListener("click", ()=> loadMyCards().catch(console.error));
-$("#btnSubmitCards").addEventListener("click", ()=> submitSelectedCards().catch(console.error));
+// ====== 생성(Gen) 탭 ======
+const elTheme = $("#gen-theme");
+const elAttr  = $("#gen-attribute");
+const elRole  = $("#gen-role");
+const elStyle = $("#gen-style");
+const elRarity= $("#gen-rarity");
+const elCount = $("#gen-count");
+const elPower = $("#gen-power");
+const elTemp  = $("#gen-temp");
+const btnGen  = $("#btn-gen-cards");
+const btnSaveSel = $("#btn-accept-selected");
+const elGrid  = $("#gen-results");
+const elStatus= $("#gen-status");
 
-// 현재 방 표시 업데이트
-state.roomId && ($("#currentRoomId").textContent = state.roomId);
+let lastGenCards = [];
+let selectedIds = new Set();
 
-// 언로드 시 정리
-window.addEventListener("beforeunload", ()=> { try{ stopRooms && stopRooms(); }catch{} });
-window.addEventListener("beforeunload", ()=>{ try{ window.__stopChat && window.__stopChat(); }catch{} });
+function setStatus(t){ elStatus.textContent = t; }
 
+btnGen.addEventListener("click", async ()=>{
+  try{
+    setStatus("생성 중…");
+    const u = await authReady; if(!u) throw new Error("로그인이 필요해.");
+    const params = {
+      count: Number(elCount.value||6),
+      theme: elTheme.value||"",
+      attribute: elAttr.value||undefined,
+      role: elRole.value||undefined,
+      playStyle: elStyle.value||undefined,
+      rarityTarget: elRarity.value||undefined,
+      powerCap: Number(elPower.value||10),
+      temperature: Number(elTemp.value||0.8)
+    };
+    const out = await callGenCards(params);
+    lastGenCards = out.cards || [];
+    selectedIds.clear();
+    renderGenResults();
+    setStatus(`생성 완료: ${lastGenCards.length}장`);
+  }catch(e){
+    console.error(e);
+    setStatus("실패: " + (e.message||e));
+  }
+});
+
+function renderGenResults(){
+  elGrid.innerHTML = "";
+  for(const card of lastGenCards){
+    const node = renderCardTile(card, {
+      selectable:true,
+      selected:selectedIds.has(card.id),
+      onToggle: (on)=>{ if(on) selectedIds.add(card.id); else selectedIds.delete(card.id); }
+    });
+    // 신고 버튼
+    const btnReport = document.createElement("button");
+    btnReport.className="btn";
+    btnReport.textContent="신고";
+    btnReport.addEventListener("click", ()=> openReport(card));
+    node.appendChild(btnReport);
+
+    // 미니 시뮬레이션 버튼(랜덤/지연효과 데모)
+    const bSim = document.createElement("button");
+    bSim.className="btn";
+    bSim.textContent="미니 시뮬";
+    bSim.addEventListener("click", ()=>{
+      const log = simulateApply(card, {seed: Date.now().toString()});
+      alert("시뮬 결과:\n" + log.join("\n"));
+    });
+    node.appendChild(bSim);
+
+    elGrid.appendChild(node);
+  }
+}
+
+async function openReport(card){
+  const reason = prompt(`카드 신고 사유 입력(강함/불일치/부적절/버그 등)\n[${card.name}]`);
+  if(!reason) return;
+  const u = await authReady; if(!u) { alert("로그인이 필요해."); return; }
+  const rid = "r_" + Date.now().toString(36);
+  await setDoc(doc(db, "reports", "cards", card.id, rid), {
+    uid: u.uid, reason, cardVersion: card.checks?.version || 1,
+    createdAt: _ts()
+  });
+  alert("신고 접수 완료!");
+}
+
+btnSaveSel.addEventListener("click", async ()=>{
+  const pick = lastGenCards.filter(c=>selectedIds.has(c.id));
+  if(pick.length===0){ alert("선택된 카드가 없어!"); return; }
+  // 서버에서 이미 저장했지만, 로컬 프로젝트에서는 다시 merge 가능
+  for(const c of pick){
+    await setDoc(doc(db, "cards", c.id), { ...c, savedAt: _ts() }, { merge:true });
+  }
+  alert(`저장 완료 (${pick.length}장)`);
+});
