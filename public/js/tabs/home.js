@@ -11,10 +11,29 @@ const roomList    = $("#roomList");
 const userBox     = $("#userBox");
 
 // 사용자 표시
+// 사용자 표시 + 구글 로그인 버튼 상태
+import { signInWithGoogle, signOutUser } from "../firebase.js";
+const btnGoogle = document.getElementById("btnGoogleLogin");
+const btnLogout = document.getElementById("btnLogout");
+
 auth.onAuthStateChanged(u=>{
   state.user = u;
-  userBox.textContent = u ? `UID: ${u.uid.slice(0,8)}… (익명)` : "로그인 필요";
+  const isAnon = !!u && u.isAnonymous;
+  const label = u ? `UID: ${u.uid.slice(0,8)}… (${isAnon ? "익명" : "Google"})` : "로그인 필요";
+  userBox.textContent = label;
+
+  if (u && !isAnon) { // 구글 로그인 상태
+    btnGoogle.style.display = "none";
+    btnLogout.style.display = "";
+  } else {
+    btnGoogle.style.display = "";
+    btnLogout.style.display = "none";
+  }
 });
+
+btnGoogle?.addEventListener("click", ()=> signInWithGoogle().catch(console.error));
+btnLogout?.addEventListener("click", ()=> signOutUser().catch(console.error));
+
 
 // 방 생성
 // ANCHOR: create-room
