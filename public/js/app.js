@@ -1,5 +1,6 @@
 // /public/js/app.js
 import { auth } from "./firebase.js";
+import { auth, authReady } from "./firebase.js";
 import { setActiveTab, $, toast } from "./ui.js";
 import { state, setUser, setRoom } from "./state.js";
 import { createRoom, watchRooms } from "./tabs/home.js";
@@ -9,7 +10,7 @@ import { watchChat } from "./chat.js";
 
 // 탭 전환
 document.querySelectorAll(".tabs button").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
+  btn.addEventListener("click", async ()=>{
     document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
     setActiveTab(btn.dataset.tab);
@@ -17,6 +18,7 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
       loadMyCards().catch(console.error);
     }
     if (btn.dataset.tab === "game") {
+      await authReady;  // 채팅 실시간도 로그인 완료 후 시작
       initGameView();
       try{ window.__stopChat && window.__stopChat(); }catch{}
       window.__stopChat = watchChat();
@@ -32,6 +34,7 @@ auth.onAuthStateChanged(u=>{
 
 // 홈 탭: 방 생성/실시간
 $("#btnCreateRoom").addEventListener("click", ()=> createRoom().catch(console.error));
+await authReady;            // 로그인(익명 포함) 완료까지 대기
 const stopRooms = watchRooms();
 
 // 카드 탭 동작
