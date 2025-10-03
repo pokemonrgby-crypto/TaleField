@@ -6,10 +6,12 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
-  onAuthStateChanged, // 필요하면 씀
-  signInAnonymously   // 필요하면 씀
+  onAuthStateChanged,
+  signInAnonymously
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
 
 import {
   initializeFirestore,
@@ -43,7 +45,12 @@ export const ts = serverTimestamp;
 // 구글 로그인 / 로그아웃(홈 탭에서 쓰는 함수 이름과 맞춤)
 const provider = new GoogleAuthProvider();
 export async function signInWithGoogle() {
-  return signInWithPopup(auth, provider);
+  try {
+    return await signInWithPopup(auth, provider);
+  } catch (e) {
+    // 팝업이 막히거나 CSP로 실패하는 경우 리다이렉트로 폴백
+    return signInWithRedirect(auth, provider);
+  }
 }
 export function signOutUser() {
   return signOut(auth);
