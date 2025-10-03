@@ -8,7 +8,12 @@ if (!window.__FBCONFIG__) {
   console.warn("⚠️ window.__FBCONFIG__ 가 비어있어. CI에서 public/firebase-config.js가 생성되는지 확인해줘.");
 }
 
-export const app  = initializeApp(window.__FBCONFIG__ || {});
+const cfg = window.__FBCONFIG__ || {};
+if (!cfg.projectId || !cfg.apiKey) {
+  console.error("❌ FIREBASE_CONFIG_MISSING: projectId/apiKey가 비어있어. CI 시크릿 또는 firebase-config.js 로딩 순서를 확인해줘.", cfg);
+  throw new Error("FIREBASE_CONFIG_MISSING");
+}
+export const app  = initializeApp(cfg);
 
 export const auth = getAuth(app);
 export const db   = getFirestore(app);
