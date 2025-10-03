@@ -1,0 +1,12 @@
+{
+  "name": "talefield-functions",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "20" },
+  "dependencies": {
+    "cross-fetch": "^4.0.0",
+    "firebase-admin": "^12.5.0",
+    "firebase-functions": "^5.0.1",
+    "zod": "^3.23.8"
+  }
+}
