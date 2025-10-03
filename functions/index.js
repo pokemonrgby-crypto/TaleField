@@ -14,9 +14,9 @@ import { processStack } from "./src/engine.js";
 const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-2.5-pro";
-const DAILY_CARD_LIMIT = 15;
-const DAILY_CHAR_LIMIT = 3;
+const GEMINI_MODEL = "gemini-2.5-flash";
+const DAILY_CARD_LIMIT = 150; // 테스트를 위해 제한을 150으로 상향 조정
+const DAILY_CHAR_LIMIT = 30;  // 캐릭터 제한도 함께 상향
 
 // --- Zod 스키마 정의 ---
 const ValueOrExpr = z.union([z.number().int(), z.string(), z.object({ expr: z.string() })]);
@@ -41,6 +41,8 @@ const Op = z.lazy(() => z.discriminatedUnion("op", [
   z.object({ op:z.literal("execute"), target:z.string(), condition: z.string() }), // 즉사
   z.object({ op:z.literal("onDeath"), actions:z.array(Op) }) // 동귀어진 등
 ]));
+const validOps = new Set(Op.options.map(o => o.shape.op.value));
+
 
 const SkillSchema = z.object({
     name: z.string(),
@@ -138,39 +140,59 @@ function extractFirstJsonObject(text) {
 }
 
 function normalizeDslOps(dsl) {
-  // draw에서 amount를 count로 정정하고, addMarker의 turns/duration을 정규화합니다.
-  for (const op of dsl || []) {
-    if (op && typeof op === 'object') {
-      // 1. draw.amount -> draw.count
-      if (op.op === 'draw' && 'amount' in op && !('count' in op)) {
-        op.count = op.amount;
-        delete op.amount;
-      }
-      
-      // 2. addMarker 정규화 (핵심 수정)
-      if (op.op === 'addMarker') {
-        if ('duration' in op && !('turns' in op)) {
-            op.turns = op.duration;
-            delete op.duration;
-        }
-        if ('count' in op && !('turns' in op)) {
-            op.turns = op.count;
-            delete op.count;
-        }
-        // turns 속성이 아예 없는 경우 기본값 1 부여
-        if (!('turns' in op)) {
-            op.turns = 1; 
-        }
-      }
+  if (!Array.isArray(dsl)) return [];
 
-      // 3. 재귀적으로 내부 DSL도 처리
-      if (Array.isArray(op.onHit)) normalizeDslOps(op.onHit);
-      if (Array.isArray(op.then)) normalizeDslOps(op.then);
-      if (Array.isArray(op.else)) normalizeDslOps(op.else);
-      if (Array.isArray(op.actions)) normalizeDslOps(op.actions);
+  const opCorrections = {
+    'damageEnemy': 'damage',
+    'dealDamage': 'damage',
+    'addShield': 'shield',
+    'restoreHealth': 'heal',
+    'drawCard': 'draw',
+    'discardCard': 'discard',
+    'applyMarker': 'addMarker',
+    'addStatus': 'addMarker',
+    'conditional': 'if',
+  };
+
+  const normalized = dsl.map(op => {
+    if (!op || typeof op !== 'object' || !op.op) return null;
+
+    // 1. 잘못된 op 이름 교정
+    if (opCorrections[op.op]) {
+      op.op = opCorrections[op.op];
     }
-  }
+    
+    // 2. 유효하지 않은 op는 필터링
+    if (!validOps.has(op.op)) {
+        console.warn(`Filtering out invalid op: ${op.op}`);
+        return null;
+    }
+
+    // 3. 필드 이름 교정
+    if (op.op === 'draw' && 'amount' in op) {
+      op.count = op.amount;
+      delete op.amount;
+    }
+    if (op.op === 'addMarker') {
+      if ('duration' in op) {
+        op.turns = op.duration;
+        delete op.duration;
+      }
+      if (!('turns' in op)) op.turns = 1;
+    }
+
+    // 4. 재귀적으로 내부 DSL 처리
+    if (op.onHit) op.onHit = normalizeDslOps(op.onHit);
+    if (op.then) op.then = normalizeDslOps(op.then);
+    if (op.else) op.else = normalizeDslOps(op.else);
+    if (op.actions) op.actions = normalizeDslOps(op.actions);
+    
+    return op;
+  }).filter(Boolean); // null 값을 제거하여 최종 배열 생성
+
+  return normalized;
 }
+
 
 function normalizeAttribute(obj) {
   // 혹시 모델이 한글 속성으로 낼 때 대비(실전에서 종종 생김)
@@ -178,22 +200,20 @@ function normalizeAttribute(obj) {
   if (typeof obj.attribute === 'string' && map[obj.attribute]) obj.attribute = map[obj.attribute];
 }
 
-// ANCHOR: functions/index.js (sanitizeCard)
 function sanitizeCard(card) {
   // 기본값 강제: cooldownTurns 없으면 0
   if (typeof card.cooldownTurns !== 'number') card.cooldownTurns = 0;
   // keywords가 문자열 하나로 올 때 배열화
   if (typeof card.keywords === 'string') card.keywords = [card.keywords];
   normalizeAttribute(card);
-  normalizeDslOps(card.dsl); // 수정된 함수 호출
+  card.dsl = normalizeDslOps(card.dsl); // 수정된 함수 호출
   return card;
 }
 
-// ANCHOR: functions/index.js (sanitizeCharacter)
 function sanitizeCharacter(ch) {
   normalizeAttribute(ch);
   for (const s of ch.skills || []) {
-    normalizeDslOps(s.dsl); // 수정된 함수 호출
+    s.dsl = normalizeDslOps(s.dsl); // 수정된 함수 호출
   }
   return ch;
 }
@@ -320,7 +340,7 @@ try {
 // --- 카드 생성 함수 ---
 export const genCard = functions
   .region("us-central1")
-  .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 90 })
+  .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 60 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
@@ -549,7 +569,6 @@ export const createRoom = functions
         return { ok: true, roomId: roomRef.id };
     });
 
-// ANCHOR: functions/index.js (setPlayerReady)
 /**
  * 플레이어 준비 및 선택 사항 업데이트 함수
  */
