@@ -9,7 +9,7 @@ try { admin.initializeApp(); } catch (_) {}
 import { defineSecret } from "firebase-functions/params";
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL   = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+const GEMINI_MODEL   = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 
 // ---- Zod schema (cards) ----
