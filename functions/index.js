@@ -1,5 +1,7 @@
 // functions/index.js
 import { initializeApp } from "firebase-admin/app";
+initializeApp(); // 앱을 가장 먼저 초기화합니다.
+
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import * as functions from "firebase-functions";
 import { HttpsError } from "firebase-functions/v1/https";
@@ -9,7 +11,6 @@ import fetch from "cross-fetch";
 import { playCard, react, endTurn } from "./src/actions.js";
 import { processStack } from "./src/engine.js";
 
-try { initializeApp(); } catch (_) {}
 const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
@@ -466,4 +467,3 @@ export const leaveRoom = functions
 
         return { ok: true };
     });
-
