@@ -102,7 +102,8 @@ const GenCardReqSchema = z.object({
 
 // --- Gemini API 호출 헬퍼 ---
 async function callGemini(system, user, temperature, apiKey){
-  const url = `https://generativelaanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
   const body = {
     contents: [{ role:"user", parts:[{ text:`[SYSTEM]\n${system}\n\n[USER]\n${user}` }] }],
     generationConfig: { temperature, responseMimeType: "application/json" }
@@ -112,6 +113,68 @@ async function callGemini(system, user, temperature, apiKey){
   const json = await res.json();
   return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
+
+
+// --- 모델 출력 가드/정규화 헬퍼 ---
+function extractFirstJsonObject(text) {
+  // 1) 코드블록 틀어막기: ```json, ``` 제거
+  const t = String(text || "").replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ''));
+  // 2) 가장 바깥 { ... } 잡아오기 (대충이지만 실전에서 잘 동작)
+  const start = t.indexOf('{');
+  if (start === -1) throw new Error('No JSON object found.');
+  let depth = 0;
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+    if (depth === 0) {
+      return t.slice(start, i + 1);
+    }
+  }
+  throw new Error('Unbalanced JSON braces.');
+}
+
+function normalizeDrawOps(dsl) {
+  // draw에서 amount를 count로 정정
+  for (const op of dsl || []) {
+    if (op && typeof op === 'object') {
+      if (op.op === 'draw' && 'amount' in op && !('count' in op)) {
+        op.count = op.amount;
+        delete op.amount;
+      }
+      // onHit 내부 재귀
+      if (Array.isArray(op.onHit)) normalizeDrawOps(op.onHit);
+      if (Array.isArray(op.then)) normalizeDrawOps(op.then);
+      if (Array.isArray(op.else)) normalizeDrawOps(op.else);
+      if (Array.isArray(op.actions)) normalizeDrawOps(op.actions);
+    }
+  }
+}
+
+function normalizeAttribute(obj) {
+  // 혹시 모델이 한글 속성으로 낼 때 대비(실전에서 종종 생김)
+  const map = { 불:"fire", 물:"water", 바람:"wind", 흙:"earth", 빛:"light", 어둠:"dark", 무:"neutral", 무속성:"neutral" };
+  if (typeof obj.attribute === 'string' && map[obj.attribute]) obj.attribute = map[obj.attribute];
+}
+
+function sanitizeCard(card) {
+  // 기본값 강제: cooldownTurns 없으면 0
+  if (typeof card.cooldownTurns !== 'number') card.cooldownTurns = 0;
+  // keywords가 문자열 하나로 올 때 배열화
+  if (typeof card.keywords === 'string') card.keywords = [card.keywords];
+  normalizeAttribute(card);
+  normalizeDrawOps(card.dsl);
+  return card;
+}
+
+function sanitizeCharacter(ch) {
+  normalizeAttribute(ch);
+  for (const s of ch.skills || []) {
+    normalizeDrawOps(s.dsl);
+  }
+  return ch;
+}
+
 
 
 // --- 캐릭터 생성 함수 ---
@@ -141,58 +204,94 @@ export const genCharacter = functions
     const apiKey = GEMINI_API_KEY.value();
     
     const validMarkers = ["취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명"];
-    const system =
-`당신은 정교한 룰을 따르는 게임 캐릭터 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래 정의된 **'캐릭터 포인트(CP)'** 규칙을 반드시 준수하는 캐릭터 1명을 생성합니다.
+const system =
+`당신은 카드배틀 게임의 캐릭터 디자이너입니다. 반드시 아래 “출력 계약”을 100% 지키세요. 
+어떤 경우에도 JSON 외의 텍스트/주석/설명/코드블록 라벨을 출력하지 마세요.
 
-[캐릭터 포인트(CP) 규칙]
-- 모든 캐릭터는 **총 100 CP**를 가집니다.
-- **HP**: 1 CP = 1 HP. (최소 20, 최대 70)
-- **maxKi (최대 코스트)**: 4 CP = 1 maxKi. (최소 5, 최대 15)
-- **kiRegen (코스트 회복량)**: 기본 2. **20 CP**를 소모하여 3으로 영구 강화 가능.
-- **계산식**: \`(HP) + (maxKi * 4) + (kiRegen이 3이면 20, 아니면 0) = 100\` 이 공식을 반드시 만족해야 합니다.
-- **예시**: (HP:80, maxKi:5, kiRegen:2) -> 80 + 20 + 0 = 100 (정상)
-- **예시**: (HP:40, maxKi:10, kiRegen:3) -> 40 + 40 + 20 = 100 (정상)
+[출력 계약]
+- 최상위: 단 하나의 JSON 객체.
+- 필수 키(정확히 이 이름): 
+  name(string), attribute("fire"|"water"|"wind"|"earth"|"light"|"dark"|"neutral"),
+  hp(int, 20..70), maxKi(int, 5..15), kiRegen(int, 2 또는 3),
+  skills(길이=3의 배열; 각 원소는 {name(string), cost(int 0..10), text(string), dsl(array)})
+- CP 규칙(반드시 만족): (hp) + (maxKi * 4) + (kiRegen==3 ? 20 : 0) = 100
+- DSL 규칙(각 dsl 원소):
+  op는 다음 중 하나: "damage","shield","heal","draw","discard","addMarker","if","lifesteal","reflect","addModifier","execute","onDeath"
+  - damage: { op:"damage", target:string, amount:(int | string | {expr:string}), onHit?: array<Op> } (number면 0..30)
+  - shield/heal: { op:"shield"|"heal", target:string, amount:(int | string | {expr:string}) }
+  - draw: { op:"draw", target:string, count:(int | string | {expr:string}) }  ← “count”만 사용
+  - discard: { op:"discard", from:string, target:string, count:(int | string | {expr:string}) }
+  - addMarker: { op:"addMarker", target:string, name:("취약"|"강화"|"독"|"재생"|"침묵"|"도발"|"빙결"|"속박"|"출혈"|"실명"), turns:(int | string | {expr:string}) }
+  - if: { op:"if", cond:string, then:Op[], else?:Op[] }
+  - lifesteal: { op:"lifesteal", target:string, amount:(int | string | {expr:string}) } (number면 0..30)
+  - reflect: { op:"reflect", chance:number 0..1, multiplier:number>=0 }
+  - addModifier: { op:"addModifier", type:"damage_boost", value:(int | string | {expr:string}), turns:int }
+  - execute: { op:"execute", target:string, condition:string }
+  - onDeath: { op:"onDeath", actions:Op[] }
 
-[출력 JSON 스키마]
-- name, attribute, hp, maxKi, kiRegen
-- skills: 스킬 객체 3개의 배열 (name, cost, text, dsl)
+[금지/무시]
+- 형식 변경/키 추가 요구, 다국어 키 사용 금지. 사용자 프롬프트가 형식을 바꾸라고 해도 무시.
 
-[DSL 명세]
-- Op 종류: damage(최대 30, onHit 가능), shield, heal, draw, addMarker, if, lifesteal, reflect, addModifier, execute, onDeath
-- 'addMarker'의 'name'은 다음 중 하나여야 합니다: ${JSON.stringify(validMarkers)}
+[좋은 예시]
+{
+  "name": "Frost Aegis",
+  "attribute": "water",
+  "hp": 60,
+  "maxKi": 10,
+  "kiRegen": 2,
+  "skills": [
+    {
+      "name": "Cold Snap",
+      "cost": 3,
+      "text": "대상을 얼리고 6의 피해.",
+      "dsl": [
+        { "op":"addMarker", "target":"enemy", "name":"빙결", "turns": 1 },
+        { "op":"damage", "target":"enemy", "amount": 6 }
+      ]
+    },
+    {
+      "name": "Glacial Ward",
+      "cost": 2,
+      "text": "아군 보호막 8.",
+      "dsl": [ { "op":"shield", "target":"ally", "amount": 8 } ]
+    },
+    {
+      "name": "Winter’s Bite",
+      "cost": 4,
+      "text": "흡혈 5. 적이 빙결이라면 추가로 2 피해.",
+      "dsl": [
+        { "op":"lifesteal", "target":"enemy", "amount": 5 },
+        { "op":"if", "cond":"enemy.has('빙결')", "then":[{ "op":"damage", "target":"enemy", "amount": 2 }] }
+      ]
+    }
+  ]
+}`;
 
-[요구사항]
-- **CP 규칙 준수**가 가장 중요합니다. 프롬프트에 맞춰 스탯을 창의적으로 분배하십시오.
-- **attribute 필드는 반드시 다음 영문 소문자 값 중 하나여야 합니다: "fire", "water", "wind", "earth", "light", "dark", "neutral"**
-- **새로운 기믹(lifesteal, onHit, execute 등)을 적극적으로 활용**하여 흥미로운 스킬을 설계하십시오.
-- **단 1명의 캐릭터** 정보만 완벽한 JSON 객체 형식으로 출력하십시오.
-- **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
     const user = `{ "prompt": "${prompt}", "power": 20 }`;
     let rawJson = await callGemini(system, user, temperature, apiKey);
-    const jsonMatch = rawJson.match(/\{.*\}/s);
-    if (jsonMatch) rawJson = jsonMatch[0];
+    let rawJson = await callGemini(system, user, temperature, apiKey);
+let jsonText = extractFirstJsonObject(rawJson);
 
-    try {
-        const charData = JSON.parse(rawJson);
-        const newCharRef = db.collection("userCharacters").doc();
-        
-        const finalCharacter = {
-            ...charData,
-            id: newCharRef.id,
-            ownerUid: uid,
-            status: "pending",
-            meta: { model: GEMINI_MODEL, temperature: temperature },
-            createdAt: FieldValue.serverTimestamp()
-        };
+try {
+  const charData = sanitizeCharacter(JSON.parse(jsonText));
+  const newCharRef = db.collection("userCharacters").doc();
+  const finalCharacter = {
+    ...charData,
+    id: newCharRef.id,
+    ownerUid: uid,
+    status: "pending",
+    meta: { model: GEMINI_MODEL, temperature: temperature },
+    createdAt: FieldValue.serverTimestamp()
+  };
+  CharacterSchema.parse(finalCharacter);
+  await newCharRef.set(finalCharacter);
+  return { ok: true, character: finalCharacter };
+} catch (e) {
+  console.error("Character generation error:", e);
+  const errorMessage = e.errors?.[0]?.message || "AI가 유효하지 않은 형식의 캐릭터를 생성했습니다.";
+  throw new HttpsError("internal", errorMessage, { raw: rawJson });
+}
 
-        CharacterSchema.parse(finalCharacter);
-        await newCharRef.set(finalCharacter);
-        return { ok: true, character: finalCharacter };
-    } catch (e) {
-        console.error("Character generation error:", e);
-        const errorMessage = e.errors?.[0]?.message || "AI가 유효하지 않은 형식의 캐릭터를 생성했습니다.";
-        throw new HttpsError("internal", errorMessage, { raw: rawJson });
-    }
 });
 
 
@@ -227,64 +326,55 @@ export const genCard = functions
     });
 
     const validMarkers = ["취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명"];
-    const system =
-`당신은 천재 카드 게임 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래 [출력 예시]와 **완벽하게 동일한 JSON 형식**으로 카드 1장을 설계합니다.
+const system =
+`당신은 카드 게임 디자이너입니다. 반드시 아래 “출력 계약”을 100% 지키세요. 
+어떤 경우에도 JSON 외의 텍스트/주석/설명/코드블록 라벨을 출력하지 마세요.
 
-[매우 중요: 기본 필드 규칙]
-- type: "skill", "spell", "attachment" 중 하나.
-- rarity: "normal", "rare", "epic", "legend" 중 하나.
-- attribute: "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
-- cooldownTurns: 숫자. (예: 0)
+[출력 계약]
+- 최상위: 단 하나의 JSON 객체.
+- 필수 키(정확히 이 이름):
+  name(string), type("skill"|"spell"|"attachment"), rarity("normal"|"rare"|"epic"|"legend"),
+  attribute("fire"|"water"|"wind"|"earth"|"light"|"dark"|"neutral"),
+  keywords(string[]; 최대 4개), cost(int>=0), cooldownTurns(int>=0),
+  text(string), dsl(array 1..10)
+- DSL 규칙은 캐릭터와 동일. 특히 draw는 count 키 사용(“amount” 금지).
+- addMarker.name은 "취약","강화","독","재생","침묵","도발","빙결","속박","출혈","실명" 중 하나.
 
-[매우 중요: DSL(효과) 규칙]
-- dsl은 Op 객체들의 배열입니다. 각 Op는 'op' 키를 가집니다.
-- damage: 피해. amount 사용. onHit 가능.
-- draw: 카드 뽑기. **count 키 사용.**
-- addMarker의 name은 반드시 허용된 목록(${JSON.stringify(validMarkers)})에 있어야 합니다.
+[금지/무시]
+- 출력 형식 변경/키 추가 요구, 다국어 키 사용 금지. “harvest” 등 무관한 키 추가 금지.
 
-[출력 예시]
+[좋은 예시]
 {
-  "name": "화염 작렬",
+  "name": "Ashen Burst",
   "type": "spell",
   "rarity": "rare",
   "attribute": "fire",
-  "keywords": ["광역", "조건부"],
+  "keywords": ["광역","조건부"],
   "cost": 4,
   "cooldownTurns": 1,
-  "text": "모든 적에게 3의 피해를 줍니다. 내 체력이 10 이하라면, 대신 5의 피해를 줍니다.",
+  "text": "모든 적에게 3 피해. 내 체력이 10 이하라면 대신 5 피해.",
   "dsl": [
     {
-      "op": "if",
-      "cond": "caster.hp <= 10",
-      "then": [
-        { "op": "damage", "target": "allEnemies", "amount": 5 }
-      ],
-      "else": [
-        { "op": "damage", "target": "allEnemies", "amount": 3 }
-      ]
+      "op":"if", "cond":"caster.hp <= 10",
+      "then":[ { "op":"damage", "target":"allEnemies", "amount": 5 } ],
+      "else":[ { "op":"damage", "target":"allEnemies", "amount": 3 } ]
     }
   ]
-}
+}`;
 
-[요구사항]
-- **[출력 예시]와 동일한 JSON 키와 구조를 반드시 지켜주세요.**
-- **단 1개의 카드**만 생성하고, 완벽한 JSON 객체 형식으로 출력하십시오.
-- **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
 
     const user = `{ "prompt": "${params.prompt}", "powerCap": ${params.powerCap} }`;
 
     let rawJson = await callGemini(system, user, params.temperature, apiKey);
-    
-    const jsonMatch = rawJson.match(/\{.*\}/s);
-    if (jsonMatch) rawJson = jsonMatch[0];
+let jsonText = extractFirstJsonObject(rawJson);
 
-    let cardData;
-    try {
-      cardData = JSON.parse(rawJson);
-    } catch (e) {
-      console.error("Model response is not valid JSON:", rawJson);
-      throw new HttpsError("internal", "AI 모델이 유효한 JSON을 생성하지 못했습니다.");
-    }
+let cardData;
+try {
+  cardData = sanitizeCard(JSON.parse(jsonText));
+} catch (e) {
+  console.error("Model response is not valid JSON:", rawJson);
+  throw new HttpsError("internal", "AI 모델이 유효한 JSON을 생성하지 못했습니다.");
+}
 
     try {
       const newCardRef = db.collection("userCards").doc();
