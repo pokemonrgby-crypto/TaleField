@@ -231,10 +231,13 @@ export const genCard = functions
 `당신은 천재 카드 게임 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래 스키마에 맞는 카드 1장을 설계합니다.
 결과는 반드시 **JSON 객체** 형식으로만 출력해야 합니다.
 
-[출력 JSON 스키마]
-- id: (이 필드는 생성하지 않습니다)
-- ownerUid: "${uid}" (고정)
-- name, type, rarity, attribute, keywords, cost, cooldownTurns, dsl, text
+[출력 JSON 스키마 및 규칙]
+- **type**: 다음 중 하나의 값이어야 합니다: "skill", "spell", "attachment"
+- **rarity**: 다음 중 하나의 값이어야 합니다: "normal", "rare", "epic", "legend"
+- **attribute**: 다음 중 하나의 값이어야 합니다: "fire", "water", "wind", "earth", "light", "dark", "neutral"
+- **dsl**: 아래 [DSL 명세]에 정의된 Op 객체의 배열이어야 합니다.
+- **text**: 카드의 효과를 설명하는 한글 문자열입니다.
+- **기타 필드**: name(string), keywords(string[]), cost(number), cooldownTurns(number)
 
 [DSL 명세]
 - Op 종류: damage(최대 30, onHit 가능), shield, heal, draw, discard, addMarker, if, lifesteal, reflect, addModifier, execute, onDeath
@@ -242,6 +245,7 @@ export const genCard = functions
 - 'addMarker'의 'name'은 다음 중 하나여야 합니다: ${JSON.stringify(validMarkers)}
 
 [요구사항]
+- **[중요] type, rarity, attribute 필드는 위에 명시된 영문 소문자 값 목록 중에서만 선택해야 합니다.**
 - **단 1개의 카드**만 생성하고, 완벽한 JSON 객체 형식으로 출력하십시오.
 - **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
 
