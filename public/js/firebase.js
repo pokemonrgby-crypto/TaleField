@@ -8,12 +8,25 @@ if (!window.__FBCONFIG__) {
   console.warn("⚠️ window.__FBCONFIG__ 가 비어있어. CI에서 public/firebase-config.js가 생성되는지 확인해줘.");
 }
 
-const cfg = window.__FBCONFIG__ || {};
+// Firebase 자동 설정(JSON) 우선, 실패 시 window.__FBCONFIG__ 허용
+let cfg = null;
+try {
+  const res = await fetch("/__/firebase/init.json", { cache: "no-store" });
+  if (res.ok) cfg = await res.json();
+} catch (_) { /* no-op */ }
+
+if (!cfg || !cfg.projectId || !cfg.apiKey) {
+  // 로컬 개발 등 Hosting 자동설정이 없을 때만 fallback
+  cfg = window.__FBCONFIG__ || {};
+}
+
 if (!cfg.projectId || !cfg.apiKey) {
-  console.error("❌ FIREBASE_CONFIG_MISSING: projectId/apiKey가 비어있어. CI 시크릿 또는 firebase-config.js 로딩 순서를 확인해줘.", cfg);
+  console.error("❌ FIREBASE_CONFIG_MISSING: Hosting init.json도 없고 window.__FBCONFIG__도 비어있어.", cfg);
   throw new Error("FIREBASE_CONFIG_MISSING");
 }
+
 export const app  = initializeApp(cfg);
+
 
 export const auth = getAuth(app);
 export const db   = getFirestore(app);
