@@ -18,7 +18,7 @@ import { signInWithGoogle, signOutUser } from "../firebase.js";
 const btnGoogle = document.getElementById("btnGoogleLogin");
 const btnLogout = document.getElementById("btnLogout");
 
-auth.onAuthStateChanged(u=>{
+onAuthStateChanged(auth, (u)=>{
   state.user = u;
   const isAnon = !!u && u.isAnonymous;
   const label = u ? `UID: ${u.uid.slice(0,8)}… (${isAnon ? "익명" : "Google"})` : "로그인 필요";
