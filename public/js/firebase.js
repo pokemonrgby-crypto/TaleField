@@ -1,8 +1,10 @@
 // firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   initializeFirestore,
   persistentLocalCache,
+  serverTimestamp,
   persistentMultipleTabManager
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
