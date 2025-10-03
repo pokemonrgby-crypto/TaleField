@@ -53,7 +53,8 @@ export const db = initializeFirestore(app, {
   // ✅ WebChannel 대신 롱폴링을 강제로 사용 (자동 감지 사용 안 함)
   experimentalForceLongPolling: true,
   experimentalAutoDetectLongPolling: false,
-  experimentalLongPollingOptions: { timeoutSeconds: 60 }, // 타임아웃 여유
+  experimentalLongPollingOptions: { timeoutSeconds: 30 }, // Firestore 허용 상한(최대 30)
+
   // 필요시 캐시를 잠깐 꺼보고 비교 테스트 하자:
   // localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
