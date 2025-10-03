@@ -1,5 +1,7 @@
 // /public/js/firebase.js
-// Firebase 앱/인증/DB 초기화 (Config는 index.html의 ANCHOR에서 window.firebaseConfig로 주입)
+// Firebase 앱/인증/DB 초기화
+// 우선 Hosting이 제공하는 /__/firebase/init.json을 사용하고, 없으면 window.__FBCONFIG__로 폴백해.
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFirestore, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
