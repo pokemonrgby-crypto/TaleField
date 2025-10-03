@@ -42,18 +42,33 @@
     <section id="view-room">
       <div class="room-header">
         <h1 id="room-title" class="page-title">게임 룸</h1>
-        <button id="btn-leave-room" class="btn">나가기</button>
+        <div>
+          <button id="btn-leave-room" class="btn">나가기</button>
+          <button id="btn-start-game" class="btn primary large" style="display:none;">게임 시작</button>
+        </div>
       </div>
       <div class="room-layout">
         <div class="player-list-container">
             <h3>플레이어</h3>
             <ul id="player-list"></ul>
         </div>
+        <div class="selection-container">
+          <div id="character-selection-area">
+            <h3>캐릭터 선택</h3>
+            <div id="room-my-characters" class="card-grid small"></div>
+          </div>
+          <div id="skill-selection-area" style="display:none;">
+            <h3 id="skill-selection-title">스킬 선택 (2개)</h3>
+            <div id="room-my-skills"></div>
+          </div>
+        </div>
         <div class="card-selection-container">
             <h3>내 카드 덱 (5~10장 선택)</h3>
-            </div>
+            <p class="muted">현재 <span id="room-selected-card-count">0</span>장 선택됨</p>
+            <div id="room-my-cards" class="card-grid small"></div>
+            <button id="btn-ready" class="btn primary" style="margin-top: 16px;">준비 완료</button>
+        </div>
       </div>
-      <button id="btn-start-game" class="btn primary large" style="display:none;">게임 시작</button>
     </section>
     
     <section id="view-my-characters">
