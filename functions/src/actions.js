@@ -3,12 +3,11 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v1/https";
 import { z } from "zod";
 
-const db = getFirestore();
-
 /**
  * 카드 사용 요청 처리 (메인 페이즈)
  */
 export async function playCard(data, context) {
+    const db = getFirestore(); // 함수가 호출될 때 Firestore 인스턴스를 가져옵니다.
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const { uid } = context.auth;
     const { matchId, cardId, targetUid } = z.object({
@@ -57,7 +56,6 @@ export async function playCard(data, context) {
             discardPile: matchData.discardPile,
             stack: newStack,
             phase: 'reaction',
-            // 7초 뒤에 resolve phase로 넘어가는 트리거를 위한 시간 설정
             reactionEndsAt: FieldValue.serverTimestamp() 
         });
 
@@ -69,6 +67,7 @@ export async function playCard(data, context) {
  * 반응 카드 사용 요청 처리 (리액션 페이즈)
  */
 export async function react(data, context) {
+    const db = getFirestore(); // 함수가 호출될 때 Firestore 인스턴스를 가져옵니다.
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const { uid } = context.auth;
     const { matchId, cardId, targetUid } = z.object({
@@ -79,7 +78,6 @@ export async function react(data, context) {
 
     const matchRef = db.doc(`matches/${matchId}`);
     
-    // playCard와 유사하지만, phase가 'reaction'일 때만 동작하도록 검사
     return await db.runTransaction(async (tx) => {
         const matchSnap = await tx.get(matchRef);
         if (!matchSnap.exists) throw new HttpsError("not-found", "매치를 찾을 수 없습니다.");
@@ -87,8 +85,7 @@ export async function react(data, context) {
         const matchData = matchSnap.data();
         if (matchData.phase !== 'reaction') throw new HttpsError("failed-precondition", "지금은 반응 카드를 낼 수 없습니다.");
 
-        // ... playCard와 동일한 로직 (유효성 검사, 비용 지불, 스택 추가) ...
-        // 단, phase를 변경하지는 않음.
+        // (playCard와 유사한 로직 추가 필요)
         
         return { ok: true, message: "반응했습니다." };
     });
@@ -98,6 +95,7 @@ export async function react(data, context) {
  * 턴 종료 요청 처리
  */
 export async function endTurn(data, context) {
+    const db = getFirestore(); // 함수가 호출될 때 Firestore 인스턴스를 가져옵니다.
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const { uid } = context.auth;
     const { matchId } = z.object({ matchId: z.string() }).parse(data);
@@ -112,14 +110,11 @@ export async function endTurn(data, context) {
         if (matchData.currentPlayerUid !== uid) throw new HttpsError("failed-precondition", "당신의 턴이 아닙니다.");
         if (matchData.phase !== 'main' && matchData.phase !== 'end') throw new HttpsError("failed-precondition", "진행 중인 효과가 있어 턴을 마칠 수 없습니다.");
 
-        // 다음 플레이어 결정 로직 (간단한 예시)
         const playerUids = Object.keys(matchData.players);
         const currentIndex = playerUids.indexOf(uid);
         const nextPlayerUid = playerUids[(currentIndex + 1) % playerUids.length];
 
         tx.update(matchRef, {
-            // 턴 종료 시 처리할 내용 (마커 턴 감소 등)
-            // ...
             currentPlayerUid: nextPlayerUid,
             turn: matchData.turn + 1,
             phase: 'main'
