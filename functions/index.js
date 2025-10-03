@@ -1,15 +1,4 @@
 // functions/index.js
-import fetch from "cross-fetch";
-// import * as admin from "firebase-admin"; // 이 줄을 주석 처리하거나 삭제합니다.
-import { initializeApp, applicationDefault } from "firebase-admin/app"; // 수정된 부분
-import { getFirestore } from "firebase-admin/firestore"; // 추가된 부분
-import * as functions from "firebase-functions";
-import { z } from "zod";
-
-
-// try { admin.initializeApp(); } catch (_) {} // 이 줄을 아래와 같이 바꿉니다.
-try { initializeApp(); } catch (_) {} // 수정된 부분
-// functions/index.js
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import * as functions from "firebase-functions";
@@ -21,9 +10,10 @@ import { defineSecret } from "firebase-functions/params";
 try { initializeApp(); } catch (_) {}
 const db = getFirestore();
 
-// --- 비밀 값 정의 ---
+// --- 비밀 값 및 모델 정의 ---
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL   = "gemini-2.5-flash"; // 사용자 요청에 따라 모델 고정
+// 사용자 요청에 따라 모델을 gemini-2.5-flash 로 지정
+const GEMINI_MODEL   = "gemini-2.5-flash";
 
 // --- Zod 스키마 정의 (카드 생성 및 요청) ---
 const ValueOrExpr = z.union([z.number().int(), z.string(), z.object({ expr: z.string() })]);
@@ -44,7 +34,7 @@ const Op = z.lazy(() => z.union([
 
 const CardSchema = z.object({
   id: z.string().regex(/^card_auto_[a-z0-9-]+$/),
-  ownerUid: z.string(),
+  ownerUid: z.string(), // 이 필드를 통해 카드 소유권 명시
   name: z.string().min(1),
   type: z.enum(["skill", "spell", "attachment"]),
   rarity: z.enum(["normal","rare","epic","legend"]),
@@ -89,8 +79,6 @@ async function callGemini(system, user, temperature, apiKey){
 }
 
 
-// --- Callable Functions ---
-
 /**
  * AI를 호출하여 카드를 생성합니다.
  */
@@ -100,41 +88,38 @@ export const genCards = functions
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const apiKey = GEMINI_API_KEY.value();
+    const uid = context.auth.uid;
 
     const params = GenCardsReqSchema.parse(data);
 
-    // AI에게 전달할 시스템 프롬프트 (DSL 명세 강화)
     const system =
 `당신은 천재 카드 게임 디자이너입니다. 사용자의 프롬프트를 해석하여, 아래에 정의된 '카드 효과 스크립트' 언어를 사용해 복잡하고 창의적인 카드 로직을 설계합니다.
 결과는 반드시 **JSON 배열** 형식으로만 출력해야 하며, 스키마를 완벽하게 준수해야 합니다.
 
-[출력 JSON 스키마] - 모든 필드는 필수이며, 순서를 지켜야 합니다.
-1.  id: "card_auto_" + 영어 소문자/숫자/하이픈으로 된 slug. (예: "card_auto_flame-burst-golem")
-2.  ownerUid: "${context.auth.uid}" (고정)
+[출력 JSON 스키마]
+1.  id: "card_auto_" + 영어 소문자/숫자/하이픈으로 된 slug.
+2.  ownerUid: "${uid}" (중요: 이 값으로 고정)
 3.  name: "카드 이름" (한글)
 4.  type: "skill" | "spell" | "attachment"
 5.  rarity: "normal" | "rare" | "epic" | "legend"
 6.  attribute: "fire" | "water" | "wind" | "earth" | "light" | "dark" | "neutral"
-7.  keywords: 문자열 배열. (예: ["pierce", "fast"])
+7.  keywords: 문자열 배열.
 8.  cost: 0~10 사이의 정수.
 9.  cooldownTurns: 0~5 사이의 정수.
-10. dsl: 아래 명세에 따른 Op 객체 배열. 1~10개.
-11. text: dsl 스크립트의 동작을 자연스러운 한국어 문장으로 설명. dsl과 완벽히 일치해야 함.
+10. dsl: DSL Op 객체 배열.
+11. text: dsl 스크립트의 동작을 자연스러운 한국어 문장으로 설명.
 12. checks: { "banned": false, "version": 1, "validatorScore": 0, "errors": [] } (고정)
 13. status: "pending" (고정)
 14. meta: {} (빈 객체)
 
 [카드 효과 스크립트(DSL) 명세]
 - **Op 종류**: damage, heal, shield, draw, discard, addMarker, setVar, if, forEach, find, addTrigger
-- **addMarker**: {"op":"addMarker", "name":"표식 이름", "turns": 턴 수, "target":"대상"}
-- **대상(target)**: "caster", "target", "allPlayers", "opponentPlayers", "find.변수명", "loop.변수명" 등을 사용.
 - **절대로 JSON 형식 외의 다른 텍스트(주석, 설명 등)를 포함하지 마십시오.**`;
 
     const user = `{ "prompt": "${params.prompt}", "count": ${params.count}, "powerCap": ${params.powerCap} }`;
 
     let rawJson = await callGemini(system, user, params.temperature, apiKey);
 
-    // 모델이 Markdown 코드 블록(` ```json ... ``` `)을 포함하는 경우 대비
     const jsonMatch = rawJson.match(/\[.*\]/s);
     if (jsonMatch) rawJson = jsonMatch[0];
 
@@ -150,14 +135,13 @@ export const genCards = functions
     for(const c of arr) {
       try {
         const parsed = CardSchema.parse(c);
-        // 간단한 밸런스 점수 계산 (예시)
         const score = parsed.dsl.length * 2 + parsed.cost * 1.5;
         const doc = {
           ...parsed,
-          ownerUid: context.auth.uid, // 보안을 위해 서버에서 UID 재설정
+          ownerUid: uid, // 보안을 위해 서버에서 UID를 다시 한 번 강제합니다.
           checks: { ...parsed.checks, validatorScore: score },
           meta: { model: GEMINI_MODEL, temperature: params.temperature },
-          createdAt: FieldValue.serverTimestamp() // 생성 시간 기록
+          createdAt: FieldValue.serverTimestamp()
         };
         out.push(doc);
       } catch(e) {
@@ -166,12 +150,12 @@ export const genCards = functions
     }
 
     if (out.length === 0) {
-      throw new HttpsError("internal", "AI 모델이 유효한 카드를 생성하지 못했습니다. 프롬프트를 수정하거나 다시 시도해주세요.");
+      throw new HttpsError("internal", "AI 모델이 유효한 카드를 생성하지 못했습니다.");
     }
 
-    // Firestore에 카드 저장
     const batch = db.batch();
     for(const c of out) {
+      // 이제 cards가 아닌 userCards 컬렉션에 저장합니다.
       batch.set(db.collection("userCards").doc(c.id), c);
     }
     await batch.commit();
