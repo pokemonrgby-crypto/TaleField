@@ -1,5 +1,13 @@
 {
   "collections": {
+    "profiles": {
+      "doc": {
+        "nickname": "string",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+
     "rooms": {
       "doc": {
         "title": "string",
