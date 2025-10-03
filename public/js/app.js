@@ -48,7 +48,6 @@ btnSave.addEventListener("click", async ()=>{
 })();
 
 // ====== 생성(Gen) 탭 ======
-// ANCHOR: gen-logic-refactor
 const elPrompt = $("#gen-prompt");
 const elCount = $("#gen-count");
 const elPower = $("#gen-power");
@@ -80,10 +79,24 @@ btnGen.addEventListener("click", async ()=>{
       temperature: Number(elTemp.value||0.8)
     };
     const out = await callGenCards(params);
+
+    // ANCHOR: log-raw-response
+    console.log("--- AI Raw Response ---");
+    console.log(out.rawJson);
+    try {
+      // JSON 문자열을 객체로 파싱하여 더 보기 좋게 출력
+      console.log("--- Parsed AI Response ---");
+      console.table(JSON.parse(out.rawJson));
+    } catch(e) {
+      console.error("Failed to parse raw JSON response:", e);
+    }
+    console.log("-----------------------");
+
+
     lastGenCards = out.cards || [];
     selectedIds.clear();
     renderGenResults();
-    setStatus(`생성 완료: ${lastGenCards.length}장`);
+    setStatus(`생성 완료: ${lastGenCards.length}장 (유효하지 않은 ${params.count - lastGenCards.length}장은 제외)`);
   }catch(e){
     console.error(e);
     setStatus("실패: " + (e.message||e));
