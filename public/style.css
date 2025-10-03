@@ -210,3 +210,12 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   max-width: 420px;
   width: 90%;
 }
+
+/* public/style.css 파일 하단에 추가 */
+
+#top-right-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+}
