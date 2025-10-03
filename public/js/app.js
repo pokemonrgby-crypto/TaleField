@@ -7,13 +7,13 @@ import {
 import { callGenCard } from "./firebase.js"; 
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { initMyCardsTab, loadMyCards } from "./tabs/my-cards.js";
-
+import { initCharacterGenTab } from "./tabs/character-gen.js";
+import { initMyCharactersTab, loadMyCharacters } from "./tabs/my-characters.js";
 
 // --- DOM Elements ---
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
 
-// --- App State ---
 let currentUser = null;
 
 // --- UI: 탭 전환 ---
@@ -26,7 +26,7 @@ $$(".bottom-nav__tabs button").forEach(btn => {
   });
 });
 
-// --- UI: 인증 버튼 ---
+// --- UI: 인증 ---
 $("#btn-google").addEventListener("click", signInWithGoogle);
 $("#btn-logout").addEventListener("click", signOutUser);
 
@@ -36,18 +36,18 @@ onAuthStateChanged(auth, user => {
   $("#btn-google").style.display = loggedIn ? "none" : "";
   $("#btn-logout").style.display = loggedIn ? "" : "none";
   if (loggedIn) {
-    checkNickname(); // 이제 이 함수를 찾을 수 있습니다.
+    checkNickname();
     loadMyCards();
+    loadMyCharacters();
   }
 });
 
-// --- UI: 닉네임 모달 (누락되었던 부분) ---
+// --- UI: 닉네임 모달 ---
 const nicknameModal = $("#nickname-modal");
 const nicknameInput = $("#nickname-input");
 const nicknameSaveBtn = $("#nickname-save");
 const nicknameError = $("#nickname-error");
 
-// checkNickname 함수 정의
 async function checkNickname() {
   const s = await needNickname();
   if (s.need) {
@@ -71,10 +71,8 @@ nicknameSaveBtn.addEventListener("click", async () => {
   }
 });
 
-
-// ====== 생성(Gen) 탭 로직 ======
+// ====== 카드 생성(Gen) 탭 로직 ======
 const genPromptEl = $("#gen-prompt");
-const genPowerEl = $("#gen-power");
 const genTempEl = $("#gen-temp");
 const genBtn = $("#btn-gen-cards");
 const genGridEl = $("#gen-results");
@@ -85,7 +83,6 @@ function setGenStatus(text, isError = false) {
   genStatusEl.style.color = isError ? 'var(--danger)' : 'var(--ink-dim)';
 }
 
-// 카드 타일 렌더링 함수
 function renderGenResultCardTile(card) {
     const el = document.createElement("div");
     el.className = "card";
@@ -118,7 +115,7 @@ genBtn.addEventListener("click", async () => {
 
     const params = {
       prompt: promptText,
-      powerCap: Number(genPowerEl.value || 10),
+      powerCap: 20, // 20으로 고정
       temperature: Number(genTempEl.value || 0.8)
     };
     
@@ -144,5 +141,7 @@ genBtn.addEventListener("click", async () => {
 // --- 앱 초기화 ---
 function initApp() {
     initMyCardsTab();
+    initCharacterGenTab();
+    initMyCharactersTab();
 }
 initApp();
