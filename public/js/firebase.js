@@ -13,10 +13,10 @@ import {
 
 import {
   initializeFirestore,
-  persistentLocalCache,
-  serverTimestamp,
-  persistentMultipleTabManager
+  memoryLocalCache,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
 
 // 1) index.html에서 먼저 넣어준 window.__FBCONFIG__ 읽기
 const cfg = window.__FBCONFIG__;
@@ -50,13 +50,11 @@ export function signOutUser() {
 }
 
 export const db = initializeFirestore(app, {
-  // ✅ WebChannel 대신 롱폴링을 강제로 사용 (자동 감지 사용 안 함)
   experimentalForceLongPolling: true,
   experimentalAutoDetectLongPolling: false,
-  experimentalLongPollingOptions: { timeoutSeconds: 30 }, // Firestore 허용 상한(최대 30)
-
-  // 필요시 캐시를 잠깐 꺼보고 비교 테스트 하자:
-  // localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  experimentalLongPollingOptions: { timeoutSeconds: 30 },
+  // ✅ 영구 캐시 대신 메모리 캐시 사용
+  localCache: memoryLocalCache()
 });
+
 
