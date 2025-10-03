@@ -1,4 +1,4 @@
-// firebase.js
+// public/js/firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
@@ -94,12 +94,11 @@ export async function needNickname() {
 }
 
 // ---------- Functions ----------
-// ---------- Functions ----------
 export const fx = getFunctions(app, "us-central1");
 
-// callGenCards를 callGenCard로 변경
+// 1. 함수 이름을 callGenCard (단수)로 변경
 export async function callGenCard(params){
-  // 함수 이름도 genCards에서 genCard로 변경 (백엔드와 일치)
+  // 2. 호출할 백엔드 함수 이름도 genCard (단수)로 변경
   const fn = httpsCallable(fx, "genCard"); 
   const res = await fn(params);
   return res.data; // {ok, card}
