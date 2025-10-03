@@ -6,8 +6,12 @@ import { z } from "zod";
 
 try { admin.initializeApp(); } catch (_) {}
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || functions.params.defineString("GEMINI_API_KEY")?.value();
-const GEMINI_MODEL   = process.env.GEMINI_MODEL   || "gemini-1.5-flash";
+// ✅ Params/Secrets: 배포 시엔 .value() 호출 금지 (런타임에서만 꺼내쓰기)
+import { defineSecret } from "firebase-functions/params";
+
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+const GEMINI_MODEL   = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
 
 // ---- Zod schema (cards) ----
 const Op = z.union([
@@ -102,8 +106,9 @@ function scoreCard(card){
 }
 
 // ---- Gemini 호출 ----
-async function callGemini(system, user, temperature=0.8){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+async function callGemini(system, user, temperature = 0.8, apiKey){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
   const body = {
     contents: [{ role:"user", parts:[{ text:`[SYSTEM]\n${system}\n\n[USER]\n${user}` }] }],
     generationConfig: { temperature }
@@ -116,7 +121,17 @@ async function callGemini(system, user, temperature=0.8){
 }
 
 // ---- API: genCards ----
-export const genCards = functions.region("us-central1").https.onCall(async (data, context) => {
+export const genCards = functions
+  .region("us-central1")
+  .runWith({ secrets: [GEMINI_API_KEY] })  // ✅ 이 함수는 GEMINI_API_KEY 시크릿을 필요로 함
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "로그인이 필요해.");
+
+    // ✅ 런타임(요청 처리 중)에서만 시크릿 값을 읽어라
+    const apiKey = GEMINI_API_KEY.value();
+    // 아래 callGemini 호출부에서 apiKey 사용하도록 바꿔줘
+    // ex) const text = await callGemini(system, user, params.temperature, apiKey);
+
   if(!context.auth) throw new functions.https.HttpsError("unauthenticated", "로그인이 필요해.");
   if(!GEMINI_API_KEY) throw new functions.https.HttpsError("failed-precondition","GEMINI_API_KEY가 설정되지 않았어.");
 
@@ -162,7 +177,7 @@ seed=${params.seed ?? ""}
 - dsl은 1~3스텝 위주, delay/roll을 적절히 섞되 과하지 않게
 - JSON 배열만 출력`;
 
-  const raw = await callGemini(system, user, params.temperature);
+  const raw = await callGemini(system, user, params.temperature, apiKey);
 
   // JSON 파싱 안전화
   let arr;
