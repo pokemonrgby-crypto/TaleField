@@ -1,6 +1,6 @@
 // public/js/firebase.js
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js)";
+import { setLogLevel } from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js)";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -8,17 +8,17 @@ import {
   signInWithRedirect,
   signOut,
   onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+} from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js)";
 import {
   initializeFirestore,
   memoryLocalCache,
   serverTimestamp,
   doc, getDoc, setDoc, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+} from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js)";
 import {
   getFunctions,
   httpsCallable
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
+} from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js)";
 
 const cfg = window.__FBCONFIG__;
 if (!cfg || !cfg.projectId) {
@@ -84,6 +84,7 @@ export async function callGenCharacter(params) {
   return res.data;
 }
 
+// ANCHOR: public/js/firebase.js (new functions)
 // 새로 추가된 함수들
 export async function callCreateRoom(params) {
     const fn = httpsCallable(fx, "createRoom");
@@ -108,6 +109,13 @@ export async function callStartGame(params) {
     const res = await fn(params);
     return res.data;
 }
+
+export async function callSetPlayerReady(params) {
+    const fn = httpsCallable(fx, "setPlayerReady");
+    const res = await fn(params);
+    return res.data;
+}
+
 
 export async function callPlayCard(params) {
     const fn = httpsCallable(fx, "playCard");
