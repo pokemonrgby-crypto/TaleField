@@ -26,6 +26,11 @@ console.log("firebase projectId:", cfg.projectId);
 // 2) 앱/DB 만들고, 꼭 'export' 붙여서 내보내기
 const app = initializeApp(cfg);
 export const auth = getAuth(app);
+// 첫 사용자 상태가 파악되면 끝나는 약속 객체
+export const authReady = new Promise((resolve) => {
+  onAuthStateChanged(auth, (u) => resolve(u), () => resolve(null));
+});
+
 
 // Firestore 타임스탬프 함수도 밖에서 쓰게 내보내기
 export const ts = serverTimestamp;
