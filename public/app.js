@@ -1,147 +1,201 @@
-// TaleField — Hosting A (MVP client)
-// 이 파일은 "앵커"를 기준으로 순차 패치를 받을 거야.
-// 새로고침만으로 Firestore 실시간 방/카드 선택 흐름을 확인할 수 있어.
-
-// 탭 전환
-const tabs = document.querySelectorAll("nav.tabs button");
-const views = {
-  home: document.getElementById("tab-home"),
-  cards: document.getElementById("tab-cards"),
-  game: document.getElementById("tab-game"),
-};
-tabs.forEach(btn=>btn.addEventListener("click", ()=>{
-  tabs.forEach(b=>b.classList.remove("active"));
-  btn.classList.add("active");
-  Object.values(views).forEach(v=>v.classList.remove("active"));
-  views[btn.dataset.tab].classList.add("active");
-}));
-
-// Firebase 모듈 불러오기
-// ANCHOR: initFirebase
+// public/js/app.js
 import {
-  getFirestore, collection, addDoc, onSnapshot, orderBy, query, serverTimestamp,
-  doc, setDoc, getDocs, where, updateDoc
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import {
-  getAuth, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  auth, authReady, signInWithGoogle, signOutUser,
+  needNickname, claimNickname, callGenCards, db
+} from "./firebase.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-const app = getApp();
-const db = getFirestore(app);
-const auth = getAuth(app);
 
-let me = null;
-onAuthStateChanged(auth, (u)=>{ me = u; });
+// --- DOM Elements ---
+const $ = (q) => document.querySelector(q);
+const $$ = (q) => document.querySelectorAll(q);
 
-// UI 엘리먼트
-const roomTitleEl = document.getElementById("roomTitle");
-const roomMaxEl   = document.getElementById("roomMax");
-const btnCreate   = document.getElementById("btnCreateRoom");
-const roomList    = document.getElementById("roomList");
-const currentRoomIdEl = document.getElementById("currentRoomId");
+// --- App State ---
+let currentUser = null;
 
-const btnRefreshCards = document.getElementById("btnRefreshCards");
-const myCardsList = document.getElementById("myCards");
-const selectedCountEl = document.getElementById("selectedCount");
-const btnSubmitCards = document.getElementById("btnSubmitCards");
+// --- UI: 탭 전환 ---
+$$(".bottom-nav__tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const activeTab = btn.dataset.tab;
+    $$(".bottom-nav__tabs button").forEach(b => b.classList.toggle("active", b === btn));
+    $$("main section").forEach(s => s.classList.toggle("active", s.id === activeTab));
+    window.scrollTo(0, 0);
+  });
+});
 
-let currentRoomId = null;
+// --- UI: 인증 버튼 ---
+$("#btn-google").addEventListener("click", signInWithGoogle);
+$("#btn-logout").addEventListener("click", signOutUser);
+
+onAuthStateChanged(auth, user => {
+  currentUser = user;
+  $("#btn-google").style.display = user ? "none" : "";
+  $("#btn-logout").style.display = user ? "" : "none";
+  if (user) {
+    checkNickname();
+  }
+});
+
+
+// --- UI: 닉네임 모달 ---
+const nicknameModal = $("#nickname-modal");
+const nicknameInput = $("#nickname-input");
+const nicknameSaveBtn = $("#nickname-save");
+const nicknameError = $("#nickname-error");
+
+async function checkNickname() {
+  const s = await needNickname();
+  if (s.need) {
+    nicknameModal.style.display = "flex";
+  }
+}
+
+nicknameSaveBtn.addEventListener("click", async () => {
+  nicknameError.textContent = "";
+  const nick = nicknameInput.value.trim();
+  if (nick.length < 2 || nick.length > 12) {
+    nicknameError.textContent = "2~12자 사이로 입력해주세요.";
+    return;
+  }
+  try {
+    if (!currentUser) throw new Error("로그인이 필요합니다.");
+    await claimNickname(currentUser.uid, nick);
+    nicknameModal.style.display = "none";
+  } catch (e) {
+    nicknameError.textContent = e.message || "저장 중 오류가 발생했습니다.";
+  }
+});
+
+
+// ====== 생성(Gen) 탭 로직 ======
+const genPromptEl = $("#gen-prompt");
+const genCountEl = $("#gen-count");
+const genPowerEl = $("#gen-power");
+const genTempEl = $("#gen-temp");
+const genBtn = $("#btn-gen-cards");
+const saveSelectedBtn = $("#btn-accept-selected");
+const genGridEl = $("#gen-results");
+const genStatusEl = $("#gen-status");
+
+let lastGeneratedCards = [];
 let selectedCardIds = new Set();
 
-// 방 생성/참여
-// ANCHOR: join-create-actions
-btnCreate.addEventListener("click", async ()=>{
-  if (!me) return alert("로그인 대기 중...");
-  const title = String(roomTitleEl.value || "").trim() || "무제 방";
-  const max = Math.max(2, Math.min(8, Number(roomMaxEl.value || 8)));
-  const rules = { minPlayers: 3, handStart: 3, handMax: 5, kiStart: 0, kiRegen: 2, kiMax: 10, reactionLimitPerTurn: 2 };
-  const docRef = await addDoc(collection(db, "rooms"), {
-    title, maxPlayers: max, hostUid: me.uid, status: "waiting", rules, createdAt: serverTimestamp(), poolSeed: Math.floor(Math.random()*1e9)
-  });
-  currentRoomId = docRef.id;
-  currentRoomIdEl.textContent = currentRoomId;
-  alert("방 생성 완료!");
-});
+function setGenStatus(text) { genStatusEl.textContent = text; }
 
-function renderRooms(list){
-  roomList.innerHTML = "";
-  for (const r of list){
-    const li = document.createElement("li");
-    li.innerHTML = `<div><strong>${r.title}</strong><br><small>${r.id} • 상태:${r.status}</small></div>`;
-    const joinBtn = document.createElement("button");
-    joinBtn.textContent = "참여";
-    joinBtn.addEventListener("click", async ()=>{
-      if (!me) return alert("로그인 대기 중...");
-      currentRoomId = r.id;
-      currentRoomIdEl.textContent = currentRoomId;
-      // rooms/{roomId}/players/{uid}
-      await setDoc(doc(db, "rooms", r.id, "players", me.uid), {
-        uid: me.uid, nickname: `게스트-${me.uid.slice(0,5)}`, characterId: "god_hakuren", selectedCardIds: [], ready: false
-      }, { merge: true });
-      alert("참여 완료! 카드 선택 탭으로 가서 5~10장 선택해줘.");
-      document.querySelector('button[data-tab="cards"]').click();
-    });
-    li.appendChild(joinBtn);
-    roomList.appendChild(li);
-  }
-}
+// 카드 타일 렌더링 함수
+function renderCardTile(card) {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.dataset.attr = card.attribute;
+    el.dataset.cardId = card.id;
 
-// 방 목록 실시간
-// ANCHOR: rooms-listeners
-const qRooms = query(collection(db, "rooms"), orderBy("createdAt", "desc"));
-onSnapshot(qRooms, (snap)=>{
-  const arr = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  renderRooms(arr);
-});
+    const costHTML = `<div style="font-size: 1.1rem; font-weight: bold;">${card.cost}</div>`;
 
-// 카드 목록 로드(내 카드: userCards where ownerUid==me.uid && status=='approved')
-async function loadMyCards(){
-  if (!me) return;
-  const q = query(collection(db, "userCards"), where("ownerUid","==", me.uid), where("status","==", "approved"));
-  const snap = await getDocs(q);
-  const cards = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  myCardsList.innerHTML = "";
-  for (const c of cards){
-    const li = document.createElement("li");
-    li.className = "cardbox";
-    const checked = selectedCardIds.has(c.id) ? "checked" : "";
-    li.innerHTML = `
-      <label style="display:flex; gap:8px; align-items:center;">
-        <input type="checkbox" data-id="${c.id}" ${checked}>
-        <div>
-          <div><strong>${c.name}</strong> <small>(${c.type}/${c.rarity}, 코스트 ${c.cost})</small></div>
-          <div class="hint">${c.text || ""}</div>
+    el.innerHTML = `
+      <div class="card__title">
+        <span>${card.name}</span>
+        ${costHTML}
+      </div>
+      <div class="card__body">
+        <div class="muted" style="font-size:0.85rem;">${card.attribute} / ${card.rarity} / ${card.type}</div>
+        <p>${card.text || "(효과 없음)"}</p>
+        <div class="card__meta">
+          Keywords: ${card.keywords.join(', ') || 'None'} <br>
+          Score: ${card.checks?.validatorScore ?? 0}
         </div>
-      </label>`;
-    myCardsList.appendChild(li);
-  }
-  // 체크 핸들러
-  myCardsList.querySelectorAll('input[type="checkbox"]').forEach(ch=>{
-    ch.addEventListener("change", ()=>{
-      const cid = ch.getAttribute("data-id");
-      if (ch.checked) selectedCardIds.add(cid); else selectedCardIds.delete(cid);
-      selectedCountEl.textContent = String(selectedCardIds.size);
+        <div style="margin-top: 12px;">
+            <label><input type="checkbox" class="card-select-cb" data-id="${card.id}"> 선택</label>
+            <button class="btn btn-report" style="margin-left:8px; font-size:0.8rem; padding: 4px 8px;">신고</button>
+        </div>
+      </div>
+    `;
+
+    // 이벤트 리스너 바인딩
+    el.querySelector('.card-select-cb').addEventListener('change', (e) => {
+        if (e.target.checked) selectedCardIds.add(card.id);
+        else selectedCardIds.delete(card.id);
     });
-  });
-  selectedCountEl.textContent = String(selectedCardIds.size);
+
+    el.querySelector('.btn-report').addEventListener('click', () => openReportModal(card));
+
+    return el;
 }
 
-btnRefreshCards.addEventListener("click", loadMyCards);
 
-// 선택 카드 제출
-// ANCHOR: submit-cards
-btnSubmitCards.addEventListener("click", async ()=>{
-  if (!me) return alert("로그인 대기 중...");
-  if (!currentRoomId) return alert("먼저 방에 참여하거나 만들어줘.");
-  const arr = Array.from(selectedCardIds);
-  if (arr.length < 5 || arr.length > 10) return alert("카드는 5~10장만 제출 가능해.");
-  await updateDoc(doc(db, "rooms", currentRoomId, "players", me.uid), {
-    selectedCardIds: arr, ready: true
-  });
-  alert("제출 완료! (호스트가 시작하면 공용 덱으로 섞여.)");
+genBtn.addEventListener("click", async () => {
+  try {
+    setGenStatus("AI가 카드를 생성하는 중...");
+    genBtn.disabled = true;
+    if (!currentUser) throw new Error("로그인이 필요합니다.");
+    const promptText = genPromptEl.value.trim();
+    if (promptText.length < 5) {
+      setGenStatus("프롬프트를 5자 이상 입력해주세요.");
+      return;
+    }
+
+    const params = {
+      prompt: promptText,
+      count: Number(genCountEl.value || 6),
+      powerCap: Number(genPowerEl.value || 10),
+      temperature: Number(genTempEl.value || 0.8)
+    };
+    const result = await callGenCards(params);
+
+    console.log("--- AI Raw Response ---");
+    console.log(result.rawJson);
+
+    lastGeneratedCards = result.cards || [];
+    selectedCardIds.clear();
+    
+    genGridEl.innerHTML = "";
+    lastGeneratedCards.forEach(card => genGridEl.appendChild(renderCardTile(card)));
+    
+    setGenStatus(`생성 완료: ${lastGeneratedCards.length}장의 유효한 카드를 만들었습니다.`);
+  } catch (e) {
+    console.error(e);
+    setGenStatus("오류: " + (e.details?.raw || e.message || e));
+  } finally {
+      genBtn.disabled = false;
+  }
 });
 
-// 인게임 뷰: 일단 자리만
-// ANCHOR: match-view
-// 추후 /functions/startMatch 이후 matches/{matchId} onSnapshot으로 상태 구독 예정.
+saveSelectedBtn.addEventListener("click", async () => {
+    const toSave = lastGeneratedCards.filter(c => selectedCardIds.has(c.id));
+    if (toSave.length === 0) {
+        alert("저장할 카드를 먼저 선택해주세요.");
+        return;
+    }
+    // userCards 컬렉션에 이미 저장되어 있으므로, 이 버튼은 '내 덱에 추가' 같은 다른 기능으로 변경될 수 있습니다.
+    // 지금은 단순히 상태를 'approved'로 바꾸는 예시를 보여줍니다.
+    try {
+        const batch = []; // 실제로는 Firestore batch write를 사용해야 합니다.
+        for (const card of toSave) {
+            const ref = doc(db, "userCards", card.id);
+            // setDoc(ref, { status: "approved" }, { merge: true }); // 예시
+        }
+        alert(`${toSave.length}장의 카드를 저장했습니다. (현재는 기능 대기중)`);
+    } catch(e) {
+        console.error("카드 저장 오류:", e);
+        alert("카드 저장에 실패했습니다.");
+    }
+});
+
+function openReportModal(card) {
+    const reason = prompt(`[${card.name}] 카드 신고 사유를 입력해주세요. (예: 너무 강력함, 텍스트와 효과 불일치, 부적절한 내용 등)`);
+    if (!reason || !currentUser) return;
+
+    const reportRef = doc(db, `reports/cards/${card.id}/${currentUser.uid}_${Date.now()}`);
+    setDoc(reportRef, {
+        reporterUid: currentUser.uid,
+        cardId: card.id,
+        cardName: card.name,
+        reason: reason,
+        reportedAt: serverTimestamp()
+    }).then(() => {
+        alert("신고가 접수되었습니다. 감사합니다.");
+    }).catch(e => {
+        console.error("신고 접수 오류:", e);
+        alert("신고 접수에 실패했습니다.");
+    });
+}
