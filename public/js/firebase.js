@@ -52,6 +52,13 @@ export async function needNickname() {
   return { need: !p?.nickname, uid: user.uid };
 }
 
+export async function getMyNickname() {
+    const user = auth.currentUser;
+    if (!user) return null;
+    const p = (await getDoc(profileRef(user.uid))).data();
+    return p?.nickname;
+}
+
 export async function claimNickname(uid, nickname) {
   const nk = nickRef(nickname);
   await runTransaction(db, async (tx) => {
@@ -64,6 +71,7 @@ export async function claimNickname(uid, nickname) {
 // ---------- Functions ----------
 export const fx = getFunctions(app, "us-central1");
 
+// 기존 함수들
 export async function callGenCard(params) {
   const fn = httpsCallable(fx, "genCard");
   const res = await fn(params);
@@ -74,4 +82,41 @@ export async function callGenCharacter(params) {
   const fn = httpsCallable(fx, "genCharacter");
   const res = await fn(params);
   return res.data;
+}
+
+// 새로 추가된 함수들
+export async function callCreateRoom(params) {
+    const fn = httpsCallable(fx, "createRoom");
+    const res = await fn(params);
+    return res.data;
+}
+
+export async function callJoinRoom(params) {
+    const fn = httpsCallable(fx, "joinRoom");
+    const res = await fn(params);
+    return res.data;
+}
+
+export async function callLeaveRoom(params) {
+    const fn = httpsCallable(fx, "leaveRoom");
+    const res = await fn(params);
+    return res.data;
+}
+
+export async function callStartGame(params) {
+    const fn = httpsCallable(fx, "startGame");
+    const res = await fn(params);
+    return res.data;
+}
+
+export async function callPlayCard(params) {
+    const fn = httpsCallable(fx, "playCard");
+    const res = await fn(params);
+    return res.data;
+}
+
+export async function callReact(params) {
+    const fn = httpsCallable(fx, "react");
+    const res = await fn(params);
+    return res.data;
 }
