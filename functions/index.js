@@ -22,7 +22,7 @@ const DAILY_CHAR_LIMIT = 3;
 const ValueOrExpr = z.union([z.number().int(), z.string(), z.object({ expr: z.string() })]);
 
 // 새로운 전투 기믹(Op)들을 대거 추가했습니다.
-const Op = z.lazy(() => z.union([
+const Op = z.lazy(() => z.discriminatedUnion("op", [
   // 기본 Op
   z.object({ op:z.literal("damage"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 30), {message: "Damage cannot exceed 30."}), target:z.string(),
     onHit: z.array(Op).optional() // 피격 시 발동 효과
