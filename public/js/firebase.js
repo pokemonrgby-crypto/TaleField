@@ -1,5 +1,7 @@
 // firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
 import {
   getAuth,
   GoogleAuthProvider,
@@ -25,6 +27,9 @@ console.log("firebase projectId:", cfg.projectId);
 
 // 2) 앱/DB 만들고, 꼭 'export' 붙여서 내보내기
 const app = initializeApp(cfg);
+// Firestore 디버그 로그를 자세히 출력
+setLogLevel('debug');
+
 export const auth = getAuth(app);
 // 첫 사용자 상태가 파악되면 끝나는 약속 객체
 export const authReady = new Promise((resolve) => {
@@ -45,7 +50,12 @@ export function signOutUser() {
 }
 
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
-  experimentalLongPollingOptions: { timeoutSeconds: 30 },
+  // ✅ WebChannel 대신 롱폴링을 강제로 사용 (자동 감지 사용 안 함)
+  experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: false,
+  experimentalLongPollingOptions: { timeoutSeconds: 60 }, // 타임아웃 여유
+  // 필요시 캐시를 잠깐 꺼보고 비교 테스트 하자:
+  // localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
+
