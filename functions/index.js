@@ -6,6 +6,9 @@ import { HttpsError } from "firebase-functions/v1/https";
 import { z } from "zod";
 import fetch from "cross-fetch";
 
+import { playCard, react, endTurn } from "./src/actions.js";
+import { processStack } from "./src/engine.js";
+
 try { initializeApp(); } catch (_) {}
 const db = getFirestore();
 
@@ -280,6 +283,72 @@ export const genCard = functions
       throw new HttpsError("internal", "AI가 유효하지 않은 형식의 카드를 생성했습니다.");
     }
 });
+
+
+// ===================================
+// ===== 전투 액션 함수들 (HTTPS) =====
+// ===================================
+export const apiPlayCard = functions.region("us-central1").https.onCall(playCard);
+export const apiReact = functions.region("us-central1").https.onCall(react);
+export const apiEndTurn = functions.region("us-central1").https.onCall(endTurn);
+
+
+// ============================================
+// ===== 핵심 엔진 트리거 (Firestore Trigger) =====
+// ============================================
+/**
+ * reaction phase가 끝난 후, resolve phase가 되면 자동으로 스택을 처리하는 트리거
+ */
+export const onResolvePhase = functions.firestore
+    .document('matches/{matchId}')
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+
+        // phase가 'resolve'로 변경되었을 때만 실행
+        if (before.phase !== 'resolve' && after.phase === 'resolve') {
+            console.log(`[${context.params.matchId}] 스택 처리 시작...`);
+            
+            const { newState, logs } = processStack(after);
+            
+            // 처리 결과와 로그를 Firestore에 업데이트
+            const finalState = {
+                ...newState,
+                logs: FieldValue.arrayUnion(...logs),
+                phase: 'end' // 스택 처리가 끝났으므로 'end' phase로 전환
+            };
+
+            await change.after.ref.update(finalState);
+            console.log(`[${context.params.matchId}] 스택 처리 완료.`);
+        }
+    });
+
+
+/**
+ * reaction phase가 시작되면 7초 후에 resolve로 변경하는 스케줄링 함수 (간단한 버전)
+ * 실제 프로덕션에서는 Cloud Tasks 등을 사용하는 것이 더 안정적입니다.
+ */
+export const scheduleResolve = functions.firestore
+    .document('matches/{matchId}')
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+
+        if (before.phase !== 'reaction' && after.phase === 'reaction') {
+            const matchId = context.params.matchId;
+            // 7초 대기
+            await new Promise(resolve => setTimeout(resolve, 7000));
+            
+            const matchRef = db.doc(`matches/${matchId}`);
+            // 7초 후에도 여전히 reaction phase인지 확인하고 resolve로 변경
+            const currentDoc = await matchRef.get();
+            if (currentDoc.exists && currentDoc.data().phase === 'reaction') {
+                await matchRef.update({ phase: 'resolve' });
+            }
+        }
+    });
+
+
 
 
 // ===========================================
