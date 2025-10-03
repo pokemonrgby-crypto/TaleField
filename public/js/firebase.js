@@ -42,8 +42,12 @@ export async function signOutUser(){
 }
 
 
-// 자동 익명 로그인
 // ANCHOR: sign-in-anon
-onAuthStateChanged(auth, (u) => {
-  if (!u) signInAnonymously(auth).catch(console.error);
+// 자동 익명 로그인 + 완료 대기 Promise
+export const authReady = new Promise((resolve) => {
+  onAuthStateChanged(auth, (u) => {
+    if (u) return resolve(u);
+    signInAnonymously(auth).catch(console.error);
+  });
 });
+
