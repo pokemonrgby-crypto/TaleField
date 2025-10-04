@@ -658,6 +658,42 @@ export const cleanupEmptyRooms = functions.pubsub.schedule('every 60 minutes').o
 });
 
 
+
+/**
+ * 카드 삭제 함수
+ */
+export const deleteCard = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        }
+        const { uid } = context.auth;
+        const { cardId } = z.object({ cardId: z.string() }).parse(data);
+
+        const cardRef = db.doc(`userCards/${cardId}`);
+        const cardSnap = await cardRef.get();
+
+        if (!cardSnap.exists) {
+            throw new HttpsError("not-found", "삭제할 카드를 찾을 수 없습니다.");
+        }
+
+        const cardData = cardSnap.data();
+        if (cardData.ownerUid !== uid) {
+            throw new HttpsError("permission-denied", "자신이 생성한 카드만 삭제할 수 있습니다.");
+        }
+        
+        // 카드 상태가 'pending' 또는 'approved'일 때만 삭제 가능 (게임 중인 카드 등 보호)
+        if (cardData.status !== 'pending' && cardData.status !== 'approved') {
+             throw new HttpsError("failed-precondition", "현재 상태에서는 카드를 삭제할 수 없습니다.");
+        }
+
+        await cardRef.delete();
+
+        return { ok: true };
+    });
+
+
 /**
  * 방 나가기 함수
  */
