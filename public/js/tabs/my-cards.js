@@ -1,5 +1,5 @@
 // public/js/tabs/my-cards.js
-import { db } from "../firebase.js";
+import { db, callDeleteCard } from "../firebase.js"; // callDeleteCard 임포트
 import { collection, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
@@ -13,6 +13,7 @@ function renderMyCardTile(card) {
     const el = document.createElement("div");
     el.className = "card";
     el.dataset.attr = card.attribute;
+    el.id = `my-card-${card.id}`;
 
     const costHTML = `<div style="font-size: 1.1rem; font-weight: bold;">${card.cost}</div>`;
 
@@ -29,7 +30,27 @@ function renderMyCardTile(card) {
           Score: ${card.checks?.validatorScore ?? 0}
         </div>
       </div>
+      <div class="card__actions">
+        <button class="btn-delete-card" data-card-id="${card.id}">삭제</button>
+      </div>
     `;
+
+    // 삭제 버튼 이벤트 리스너
+    el.querySelector('.btn-delete-card').addEventListener('click', async (e) => {
+        e.stopPropagation(); // 카드 전체 클릭 이벤트 방지
+        const cardId = e.target.dataset.cardId;
+        if (confirm(`'${card.name}' 카드를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) {
+            try {
+                await callDeleteCard({ cardId });
+                el.remove(); // UI에서 즉시 제거
+                alert("카드가 삭제되었습니다.");
+            } catch (error) {
+                console.error("Card deletion failed:", error);
+                alert(`카드 삭제 실패: ${error.message}`);
+            }
+        }
+    });
+
     return el;
 }
 
@@ -71,10 +92,8 @@ export async function loadMyCards() {
 export function initMyCardsTab() {
     refreshBtn.addEventListener("click", loadMyCards);
     
-    // '내 카드' 탭이 활성화될 때 자동으로 카드 목록을 로드하도록 이벤트 리스너 추가
     const myCardsTabBtn = document.querySelector('button[data-tab="view-my-cards"]');
     myCardsTabBtn.addEventListener('click', () => {
-        // 이미 로드된 내용이 없다면 로드
         if (myCardsGridEl.children.length === 0) {
             loadMyCards();
         }
