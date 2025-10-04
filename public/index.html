@@ -89,8 +89,25 @@
         <div id="my-cards-grid" class="card-grid"></div>
     </section>
 
+    <section id="view-gen-hub">
+      <h1 class="page-title">생성</h1>
+      <div class="gen-hub-container">
+        <div class="gen-hub-item" id="btn-goto-gen-char">
+          <h2>AI 캐릭터 생성</h2>
+          <p>AI의 도움을 받아 세상에 하나뿐인 당신의 캐릭터를 만드세요.</p>
+        </div>
+        <div class="gen-hub-item" id="btn-goto-gen-card">
+          <h2>AI 카드 생성</h2>
+          <p>독창적인 아이디어로 새로운 카드를 만들어 게임의 메타를 바꾸세요.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="view-gen-char">
-        <h1 class="page-title">AI 캐릭터 생성</h1>
+        <div class="page-header">
+          <button class="btn btn-back" data-target="view-gen-hub">&lt; 뒤로가기</button>
+          <h1 class="page-title">AI 캐릭터 생성</h1>
+        </div>
         <div class="toolbar">
           <textarea id="gen-char-prompt" placeholder="만들고 싶은 캐릭터의 아이디어를 150자 내로 자유롭게 적어주세요. (예: 강력한 방어력과 재생 능력을 가진 강철 골렘)" maxlength="150"></textarea>
           <label>창의성 <input id="gen-char-temp" type="number" step="0.1" min="0" max="1" value="0.8" style="width:80px"></label>
@@ -101,7 +118,10 @@
     </section>
 
     <section id="view-gen">
-      <h1 class="page-title">AI 카드 생성</h1>
+      <div class="page-header">
+        <button class="btn btn-back" data-target="view-gen-hub">&lt; 뒤로가기</button>
+        <h1 class="page-title">AI 카드 생성</h1>
+      </div>
       <div class="toolbar">
         <textarea id="gen-prompt" placeholder="만들고 싶은 카드의 아이디어를 150자 내로 자유롭게 적어주세요." maxlength="150"></textarea>
         <label>창의성 <input id="gen-temp" type="number" step="0.1" min="0" max="1" value="0.8" style="width:80px"></label>
@@ -115,11 +135,9 @@
   <nav class="bottom-nav">
     <div class="bottom-nav__tabs">
       <button data-tab="view-lobby" class="active">로비</button>
-      <button data-tab="view-room">룸</button>
       <button data-tab="view-my-characters">내 캐릭터</button>
       <button data-tab="view-my-cards">내 카드</button>
-      <button data-tab="view-gen-char">캐릭터 생성</button>
-      <button data-tab="view-gen">카드 생성</button>
+      <button data-tab="view-gen-hub">생성</button>
     </div>
     <div class="bottom-nav__user">
       <button id="btn-google" class="btn">Google 로그인</button>
