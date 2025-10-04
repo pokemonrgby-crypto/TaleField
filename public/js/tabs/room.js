@@ -1,5 +1,5 @@
 // public/js/tabs/room.js
-import { onSnapshot, doc, collection, query, where, getDocs } from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js)";
+import { onSnapshot, doc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { auth, db, callLeaveRoom, callStartGame, callSetPlayerReady } from "../firebase.js";
 import { state, setRoom } from "../state.js";
 
@@ -48,7 +48,7 @@ function updateRoomView(roomData) {
     roomTitleEl.textContent = roomData.title;
     playerListEl.innerHTML = "";
     roomData.players?.forEach(p => playerListEl.appendChild(renderPlayer(p)));
-    
+
     const amIHost = roomData.hostUid === auth.currentUser?.uid;
     startGameBtn.style.display = amIHost ? 'block' : 'none';
 
@@ -208,7 +208,7 @@ function watchRoom(roomId) {
 export function setRoomId(roomId) {
     if (currentRoomId === roomId) return;
     currentRoomId = roomId;
-    setRoom(roomId); 
+    setRoom(roomId);
 
     if (roomId) {
         watchRoom(roomId);
