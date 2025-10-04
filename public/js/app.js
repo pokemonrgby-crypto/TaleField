@@ -20,24 +20,33 @@ const $$ = (q) => document.querySelectorAll(q);
 let currentUser = null;
 
 // --- UI: 탭 전환 ---
+function setActiveSection(sectionId) {
+  $$("main section").forEach(s => s.classList.toggle("active", s.id === sectionId));
+  window.scrollTo(0, 0);
+}
+
 function setActiveTab(tabId) {
   $$(".bottom-nav__tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
-  $$("main section").forEach(s => s.classList.toggle("active", s.id === tabId));
-  window.scrollTo(0, 0);
+  setActiveSection(tabId);
 }
 
 $$(".bottom-nav__tabs button").forEach(btn => {
   btn.addEventListener("click", () => {
     const tabId = btn.dataset.tab;
-    // 룸에서 나갈 때 #lobby로 이동
     if (state.roomId && tabId !== 'view-room') {
       history.pushState(null, '', '#lobby');
-      leaveRoom(); // 방 나가는 로직 추가
-    } else if (tabId === 'view-lobby') {
-       history.pushState(null, '', '#lobby');
+      handleRouteChange(); // 해시 변경을 수동으로 처리
+    } else {
+      setActiveTab(tabId);
     }
-    setActiveTab(tabId);
   });
+});
+
+// 생성 허브 내의 네비게이션
+$('#btn-goto-gen-char').addEventListener('click', () => setActiveSection('view-gen-char'));
+$('#btn-goto-gen-card').addEventListener('click', () => setActiveSection('view-gen'));
+$$('.btn-back').forEach(btn => {
+  btn.addEventListener('click', () => setActiveSection(btn.dataset.target));
 });
 
 
@@ -47,8 +56,13 @@ function handleRouteChange() {
   if (hash.startsWith('#room/')) {
     const roomId = hash.substring(6);
     setRoomId(roomId);
-    setActiveTab('view-room');
+    setActiveSection('view-room');
+    // 룸에 있을 땐 하단 탭 비활성화
+    $$(".bottom-nav__tabs button").forEach(b => b.classList.remove('active'));
   } else {
+    if (state.roomId) {
+        leaveRoom();
+    }
     setRoomId(null);
     setActiveTab('view-lobby');
   }
@@ -72,7 +86,6 @@ onAuthStateChanged(auth, user => {
     loadMyCards();
     loadMyCharacters();
   } else {
-    // 로그아웃 시 로비로
     window.location.hash = '#lobby';
   }
 });
@@ -136,10 +149,8 @@ function renderGenResultCardTile(card) {
     return el;
 }
 
-// ANCHOR: public/js/app.js (genBtn event listener)
 genBtn.addEventListener("click", async () => {
-  // ANCHOR: card-gen-disable-button-fix
-  if (genBtn.disabled) return; // 중복 클릭 방지
+  if (genBtn.disabled) return; 
 
   setGenStatus("AI가 카드를 생성하는 중...");
   genBtn.disabled = true;
@@ -154,7 +165,7 @@ genBtn.addEventListener("click", async () => {
 
     const params = {
       prompt: promptText,
-      powerCap: 20, // 20으로 고정
+      powerCap: 20,
       temperature: Number(genTempEl.value || 0.8)
     };
 
