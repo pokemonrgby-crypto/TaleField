@@ -116,6 +116,11 @@ export async function callSetPlayerReady(params) {
     return res.data;
 }
 
+export async function callDeleteCard(params) {
+    const fn = httpsCallable(fx, "deleteCard");
+    const res = await fn(params);
+    return res.data;
+}
 
 export async function callPlayCard(params) {
     const fn = httpsCallable(fx, "playCard");
