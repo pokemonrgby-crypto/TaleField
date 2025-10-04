@@ -1,6 +1,6 @@
 // public/js/firebase.js
-import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js)";
-import { setLogLevel } from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js)";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -8,17 +8,17 @@ import {
   signInWithRedirect,
   signOut,
   onAuthStateChanged
-} from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js)";
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   initializeFirestore,
   memoryLocalCache,
   serverTimestamp,
   doc, getDoc, setDoc, runTransaction
-} from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js)";
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
   getFunctions,
   httpsCallable
-} from "[https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js](https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js)";
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
 const cfg = window.__FBCONFIG__;
 if (!cfg || !cfg.projectId) {
