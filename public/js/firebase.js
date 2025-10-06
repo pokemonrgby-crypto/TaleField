@@ -133,3 +133,9 @@ export async function callReact(params) {
     const res = await fn(params);
     return res.data;
 }
+
+export async function callEndTurn(params) {
+    const fn = httpsCallable(fx, "endTurn");
+    const res = await fn(params);
+    return res.data;
+}
