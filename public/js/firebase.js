@@ -123,19 +123,19 @@ export async function callDeleteCard(params) {
 }
 
 export async function callPlayCard(params) {
-    const fn = httpsCallable(fx, "playCard");
+    const fn = httpsCallable(fx, "apiPlayCard");
     const res = await fn(params);
     return res.data;
 }
 
 export async function callReact(params) {
-    const fn = httpsCallable(fx, "react");
+    const fn = httpsCallable(fx, "apiReact");
     const res = await fn(params);
     return res.data;
 }
 
 export async function callEndTurn(params) {
-    const fn = httpsCallable(fx, "endTurn");
+    const fn = httpsCallable(fx, "apiEndTurn");
     const res = await fn(params);
     return res.data;
 }
