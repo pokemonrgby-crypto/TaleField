@@ -55,7 +55,15 @@ export function processStack(matchState) {
     while (stack.length > 0) {
         const op = stack.pop(); // 스택의 맨 위에서 Op를 하나씩 꺼냄
         const caster = state.players[op.casterUid];
+        
+        // 이미 패배한 플레이어는 행동 불가
+        if (caster.isDefeated) continue;
+
         const target = op.targetUid ? state.players[op.targetUid] : caster; // 타겟이 없으면 자기 자신
+        
+        // 이미 패배한 플레이어는 대상이 될 수 없음 (일부 효과 제외)
+        if (target.isDefeated) continue;
+
 
         const logEntry = {
             type: 'op_start',
@@ -64,7 +72,7 @@ export function processStack(matchState) {
             op: op.op,
             timestamp: Date.now()
         };
-        logs.push(logEntry);
+        // logs.push(logEntry); // 시작 로그는 너무 많으므로 주석 처리
 
         switch (op.op) {
             case 'damage': {
@@ -127,6 +135,32 @@ export function processStack(matchState) {
     }
     
     // 처리 후 스택 비우기
-    state.stack = []; 
+    state.stack = [];
+
+    // 플레이어 사망 처리
+    for (const uid in state.players) {
+        if (state.players[uid].hp <= 0 && !state.players[uid].isDefeated) {
+            state.players[uid].isDefeated = true;
+            state.players[uid].hp = 0; // 음수 체력 방지
+            logs.push({
+                type: 'system',
+                message: `** ${state.players[uid].nickname} 선수가 쓰러졌습니다! **`,
+                timestamp: Date.now()
+            });
+        }
+    }
+
+    // 게임 종료 조건 확인
+    const activePlayers = Object.values(state.players).filter(p => !p.isDefeated);
+    if (activePlayers.length <= 1 && state.status !== 'finished') {
+        state.status = 'finished';
+        const winner = activePlayers[0];
+        logs.push({
+            type: 'system',
+            message: `** 게임 종료! 최종 승자는 ${winner ? winner.nickname : '없습니다'}! **`,
+            timestamp: Date.now()
+        });
+    }
+
     return { newState: state, logs };
 }
