@@ -225,8 +225,10 @@ async function loadMyData() {
     myCharacters = charSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCharacterSelection();
 
-    // 카드 로드
-    const cardQ = query(collection(db, "userCards"), where("ownerUid", "==", user.uid), where("status", "==", "approved"));
+    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+    // 카드 로드 시 'approved' 상태만 가져오던 것을 'blocked'가 아닌 모든 카드를 가져오도록 변경
+    const cardQ = query(collection(db, "userCards"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
+    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
     const cardSnap = await getDocs(cardQ);
     myCards = cardSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCardSelection();
