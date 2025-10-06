@@ -226,7 +226,10 @@ async function loadMyData() {
 
     // 캐릭터 로드
     try {
-        const charQ = query(collection(db, "userCharacters"), where("ownerUid", "==", user.uid), where("status", "==", "approved"));
+        // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+        // 'approved' 상태만 가져오던 것을 'blocked'가 아닌 모든 캐릭터를 가져오도록 변경
+        const charQ = query(collection(db, "userCharacters"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
+        // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
         const charSnap = await getDocs(charQ);
         myCharacters = charSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         console.log(`[Room] ${myCharacters.length}개의 캐릭터를 불러왔습니다.`);
