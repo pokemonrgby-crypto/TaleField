@@ -8,6 +8,7 @@
   --ink-dim: #a0a0a0;
   --accent-main: #0095ff;
   --accent-secondary: #3ddc84;
+  --danger: #ff5252;
   --line-main: #333;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -195,15 +196,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   background-color: var(--accent-main);
 }
 
-.bottom-nav__user {
-  position: absolute;
-  right: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.danger { color: #ff5252; }
+.danger { color: var(--danger); }
 .muted { color: var(--ink-dim); }
 
 /* 닉네임 모달 */
@@ -224,13 +217,13 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   width: 90%;
 }
 
-/* public/style.css 파일 하단에 추가 */
-
 #top-right-container {
   position: fixed;
   top: 16px;
   right: 16px;
   z-index: 1000;
+  display: flex;
+  gap: 8px;
 }
 
 /* ANCHOR: public/style.css (room styles) */
@@ -383,5 +376,5 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 #view-room.is-ready #btn-ready {
   pointer-events: auto;
   opacity: 1;
-  background-color: var(--danger, #E4572E); /* 준비 취소 버튼 색상 변경 */
+  background-color: var(--danger); /* 준비 취소 버튼 색상 변경 */
 }
