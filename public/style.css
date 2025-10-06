@@ -353,63 +353,90 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   background-color: var(--danger); 
 }
 
-/* ▼▼▼▼▼ 신규 추가된 매치 화면 스타일 ▼▼▼▼▼ */
+/* ▼▼▼▼▼ 신규/수정된 매치 화면 스타일 ▼▼▼▼▼ */
 .match-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 24px;
 }
-.match-layout {
+
+.match-grid-layout {
     display: grid;
-    grid-template-columns: 250px 1fr;
-    grid-template-rows: auto 1fr;
-    gap: 24px;
-    align-items: flex-start;
+    grid-template-columns: 1fr 300px;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+    height: calc(100vh - 180px); /* 헤더, 네비게이션 바 높이를 고려한 전체 높이 */
 }
-#match-players-area {
-    grid-row: 1 / 3;
-}
-#match-game-board, #match-my-area {
+
+.match-panel {
     background: var(--bg-panel);
     border-radius: var(--radius-md);
     padding: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
-#match-my-area {
-    grid-column: 1 / -1; 
+
+.match-panel h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
 }
-.game-log {
+
+#match-log-panel { grid-area: 1 / 1 / 2 / 2; }
+#match-players-panel { grid-area: 1 / 2 / 2 / 3; }
+#match-hand-panel { grid-area: 2 / 1 / 3 / 2; }
+#match-actions-panel { grid-area: 2 / 2 / 3 / 3; }
+
+#match-log, #my-hand {
+    flex-grow: 1;
+    overflow-y: auto;
     background: var(--bg-input);
     border-radius: 8px;
-    padding: 12px;
-    height: 200px;
+    padding: 8px;
+}
+
+#match-player-list {
+    flex-grow: 1;
     overflow-y: auto;
-    font-size: 0.9rem;
-    line-height: 1.6;
-    margin-bottom: 16px;
+}
+
+#my-player-state {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line-main);
+}
+
+#selected-card-details {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--line-main);
+    border-radius: 8px;
+    margin-bottom: 12px;
 }
 
 .actions-panel {
-    margin-top: 16px;
-    padding-top: 16px;
+    margin-top: auto; /* 패널 하단에 액션 버튼들을 위치시킴 */
+    padding-top: 12px;
     border-top: 1px solid var(--line-main);
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.target-info {
-    font-size: 0.9rem;
-    color: var(--ink-dim);
-}
-.action-buttons {
-    display: flex;
+    flex-direction: column;
     gap: 12px;
 }
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
 .player-status {
     padding: 8px;
     border-radius: 6px;
     cursor: pointer;
     transition: background-color 0.2s;
+    margin-bottom: 4px;
 }
 .player-status:hover {
     background-color: var(--bg-hover);
@@ -418,4 +445,4 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
     background-color: var(--accent-main);
     color: #fff;
 }
-/* ▲▲▲▲▲ 신규 추가된 매치 화면 스타일 ▲▲▲▲▲ */
+/* ▲▲▲▲▲ 신규/수정된 매치 화면 스타일 ▲▲▲▲▲ */
