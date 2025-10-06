@@ -215,23 +215,38 @@ async function handleReady() {
 }
 
 
+// public/js/tabs/room.js
+
 async function loadMyData() {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+        console.warn("loadMyData: 현재 로그인된 사용자가 없어 데이터 로드를 건너뜁니다.");
+        return;
+    }
 
     // 캐릭터 로드
-    const charQ = query(collection(db, "userCharacters"), where("ownerUid", "==", user.uid), where("status", "==", "approved"));
-    const charSnap = await getDocs(charQ);
-    myCharacters = charSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderCharacterSelection();
+    try {
+        const charQ = query(collection(db, "userCharacters"), where("ownerUid", "==", user.uid), where("status", "==", "approved"));
+        const charSnap = await getDocs(charQ);
+        myCharacters = charSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log(`[Room] ${myCharacters.length}개의 캐릭터를 불러왔습니다.`);
+        renderCharacterSelection();
+    } catch (error) {
+        console.error("[Room] 내 캐릭터를 불러오는 중 오류 발생:", error);
+        alert("내 캐릭터 정보를 불러오는 데 실패했습니다. 콘솔(F12)을 확인해주세요.");
+    }
 
-    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
-    // 카드 로드 시 'approved' 상태만 가져오던 것을 'blocked'가 아닌 모든 카드를 가져오도록 변경
-    const cardQ = query(collection(db, "userCards"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
-    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
-    const cardSnap = await getDocs(cardQ);
-    myCards = cardSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderCardSelection();
+    // 카드 로드
+    try {
+        const cardQ = query(collection(db, "userCards"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
+        const cardSnap = await getDocs(cardQ);
+        myCards = cardSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log(`[Room] ${myCards.length}개의 카드를 불러왔습니다.`);
+        renderCardSelection();
+    } catch(error) {
+        console.error("[Room] 내 카드를 불러오는 중 오류 발생:", error);
+        alert("내 카드 정보를 불러오는 데 실패했습니다. 콘솔(F12)을 확인해주세요.");
+    }
 }
 
 
