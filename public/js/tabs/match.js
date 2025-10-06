@@ -1,22 +1,60 @@
 // public/js/tabs/match.js
 import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { auth, db } from "../firebase.js";
+import { auth, db, callPlayCard, callEndTurn } from "../firebase.js";
 import { state, on } from "../state.js";
 
 const $ = (q) => document.querySelector(q);
 
-const matchContainer = $("#view-match");
 const playerListEl = $("#match-player-list");
 const logEl = $("#match-log");
 const myHandEl = $("#my-hand");
 const myStateEl = $("#my-player-state");
 
+// Action Panel Elements
+const playCardBtn = $("#btn-play-card");
+const endTurnBtn = $("#btn-end-turn");
+const selectedCardNameEl = $("#selected-card-name");
+const selectedTargetNameEl = $("#selected-target-name");
+
 let currentMatchId = null;
 let unsubscribeMatch = null;
+
+let selectedCardId = null;
+let selectedTargetUid = null;
+
+function updateActionPanel() {
+    const myTurn = state.match?.currentPlayerUid === auth.currentUser?.uid;
+    endTurnBtn.disabled = !myTurn;
+    
+    const card = state.match?.players[auth.currentUser?.uid]?.hand.find(c => c.id === selectedCardId);
+    selectedCardNameEl.textContent = card?.name || "없음";
+    
+    const target = state.match?.players[selectedTargetUid];
+    selectedTargetNameEl.textContent = target?.nickname || "없음";
+
+    playCardBtn.disabled = !myTurn || !card || !target;
+}
+
+function selectCard(cardId) {
+    selectedCardId = cardId;
+    document.querySelectorAll('#my-hand .card').forEach(el => {
+        el.classList.toggle('selected', el.dataset.cardId === cardId);
+    });
+    updateActionPanel();
+}
+
+function selectTarget(uid) {
+    selectedTargetUid = uid;
+    document.querySelectorAll('#match-player-list .player-status').forEach(el => {
+        el.classList.toggle('selected', el.dataset.uid === uid);
+    });
+    updateActionPanel();
+}
 
 function renderPlayerState(player) {
     const el = document.createElement('div');
     el.className = 'player-status';
+    el.dataset.uid = player.uid;
     const isMe = player.uid === auth.currentUser?.uid;
     const isCurrentTurn = state.match?.currentPlayerUid === player.uid;
 
@@ -25,6 +63,7 @@ function renderPlayerState(player) {
         <div>HP: ${player.hp}/${player.maxHp} | KI: ${player.ki}/${player.maxKi}</div>
         <div>Hand: ${player.hand?.length || 0}</div>
     `;
+    el.addEventListener('click', () => selectTarget(player.uid));
     return el;
 }
 
@@ -39,39 +78,70 @@ function renderMyHand(hand = []) {
             <div class="card__title"><span>[${card.cost}] ${card.name}</span></div>
             <div class="card__body" style="font-size:0.8rem; padding: 8px;">${card.text}</div>
         `;
+        el.addEventListener('click', () => selectCard(card.id));
         myHandEl.appendChild(el);
     });
 }
 
 function updateMatchView(matchData) {
     if (!matchData) {
-        // 데이터가 없는 경우 UI 초기화
         playerListEl.innerHTML = "";
         logEl.innerHTML = "매치 정보를 불러오는 중...";
         myHandEl.innerHTML = "";
-        myStateEl.innerHTML = "";
         return;
     }
     
-    state.match = matchData; // 전역 상태에 매치 데이터 저장
+    state.match = matchData;
 
-    // 플레이어 목록 렌더링
     playerListEl.innerHTML = "";
     Object.values(matchData.players).forEach(p => {
         playerListEl.appendChild(renderPlayerState(p));
     });
 
-    // 내 정보 및 손패 렌더링
     const myData = matchData.players[auth.currentUser?.uid];
     if (myData) {
-        myStateEl.innerHTML = `HP: ${myData.hp}/${myData.maxHp} | KI: ${myData.ki}/${myData.maxKi}`;
+        myStateEl.innerHTML = ""; 
         renderMyHand(myData.hand);
     }
 
-    // 로그 렌더링
-    logEl.innerHTML = (matchData.logs || []).map(l => `<div>${l.caster}: ${l.cardName} (${l.type})</div>`).join('');
+    logEl.innerHTML = (matchData.logs || [])
+        .map(l => `<div>[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}</div>`)
+        .join('') || '<div class="muted">게임 로그가 여기에 표시됩니다.</div>';
     logEl.scrollTop = logEl.scrollHeight;
+
+    updateActionPanel();
 }
+
+async function handlePlayCard() {
+    if (playCardBtn.disabled) return;
+    playCardBtn.disabled = true;
+
+    try {
+        await callPlayCard({
+            matchId: currentMatchId,
+            cardId: selectedCardId,
+            targetUid: selectedTargetUid,
+        });
+        // Reset selections after playing
+        selectCard(null);
+        selectTarget(null);
+    } catch (e) {
+        alert(`카드 사용 실패: ${e.message}`);
+    } finally {
+        playCardBtn.disabled = false;
+    }
+}
+
+async function handleEndTurn() {
+    if (endTurnBtn.disabled) return;
+    endTurnBtn.disabled = true;
+    try {
+        await callEndTurn({ matchId: currentMatchId });
+    } catch (e) {
+        alert(`턴 종료 실패: ${e.message}`);
+    }
+}
+
 
 function watchMatch(matchId) {
     if (unsubscribeMatch) unsubscribeMatch();
@@ -89,11 +159,7 @@ function watchMatch(matchId) {
 
 export function setMatchId(matchId) {
     if (currentMatchId === matchId) return;
-
-    if (unsubscribeMatch) {
-        unsubscribeMatch();
-        unsubscribeMatch = null;
-    }
+    if (unsubscribeMatch) unsubscribeMatch();
     
     currentMatchId = matchId;
     state.matchId = matchId;
@@ -106,5 +172,6 @@ export function setMatchId(matchId) {
 }
 
 export function initMatchTab() {
-    // 여기에 게임 내 액션 버튼(카드 사용, 턴 종료 등) 이벤트 리스너 추가
+    playCardBtn.addEventListener('click', handlePlayCard);
+    endTurnBtn.addEventListener('click', handleEndTurn);
 }
