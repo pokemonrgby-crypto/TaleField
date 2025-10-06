@@ -18,6 +18,7 @@ const $ = (q) => document.querySelector(q);
 const $$ = (q) => document.querySelectorAll(q);
 
 let currentUser = null;
+let isLeaving = false; // Flag to prevent double leave
 
 // --- UI: 탭 전환 ---
 function setActiveSection(sectionId) {
@@ -34,10 +35,12 @@ $$(".bottom-nav__tabs button").forEach(btn => {
   btn.addEventListener("click", () => {
     const tabId = btn.dataset.tab;
     if (state.roomId && tabId !== 'view-room') {
-      history.pushState(null, '', '#lobby');
-      handleRouteChange(); // 해시 변경을 수동으로 처리
+       if (confirm('방을 나가시겠습니까?')) {
+        window.location.hash = '#lobby';
+      }
     } else {
-      setActiveTab(tabId);
+       history.pushState(null, '', `#${tabId.replace('view-', '')}`);
+       handleRouteChange();
     }
   });
 });
@@ -51,20 +54,22 @@ $$('.btn-back').forEach(btn => {
 
 
 // --- 라우팅 ---
-function handleRouteChange() {
+async function handleRouteChange() {
   const hash = window.location.hash;
   if (hash.startsWith('#room/')) {
     const roomId = hash.substring(6);
     setRoomId(roomId);
     setActiveSection('view-room');
-    // 룸에 있을 땐 하단 탭 비활성화
     $$(".bottom-nav__tabs button").forEach(b => b.classList.remove('active'));
   } else {
-    if (state.roomId) {
-        leaveRoom();
+    if (state.roomId && !isLeaving) {
+        isLeaving = true;
+        await leaveRoom();
+        isLeaving = false;
     }
     setRoomId(null);
-    setActiveTab('view-lobby');
+    const targetTab = hash.substring(1) || 'lobby';
+    setActiveTab(`view-${targetTab}`);
   }
 }
 
@@ -79,20 +84,16 @@ $("#btn-logout").addEventListener("click", signOutUser);
 onAuthStateChanged(auth, user => {
   currentUser = user;
   const loggedIn = !!user;
-  $("#btn-google").style.display = loggedIn ? "none" : "";
-  $("#btn-logout").style.display = loggedIn ? "" : "none";
+  $("#btn-google").style.display = loggedIn ? "none" : "block";
+  $("#btn-logout").style.display = loggedIn ? "block" : "none";
   
   if (loggedIn) {
     checkNickname();
-    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
-    // 로그인 확정 후, 현재 해시(#) 경로를 다시 처리하도록 호출합니다.
-    // 이렇게 하면 룸 URL로 바로 접속했더라도 로그인 정보가 확정된 상태에서
-    // 룸 데이터를 불러오게 되어 경합 문제를 해결합니다.
     handleRouteChange();
-    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
   } else {
-    // 로그아웃 시 로비로 이동
-    window.location.hash = '#lobby';
+    if (state.roomId) {
+        window.location.hash = '#lobby';
+    }
   }
 });
 
