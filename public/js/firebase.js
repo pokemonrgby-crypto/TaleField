@@ -69,7 +69,7 @@ export async function claimNickname(uid, nickname) {
 }
 
 // ---------- Functions ----------
-export const fx = getFunctions(app, "us-central1");
+export const fx = getFunctions(app, "asia-northeast3");
 
 // 기존 함수들
 export async function callGenCard(params) {
