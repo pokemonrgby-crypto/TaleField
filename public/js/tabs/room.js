@@ -60,23 +60,26 @@ function updateRoomView(roomData) {
     const amIHost = roomData.hostUid === auth.currentUser?.uid;
     startGameBtn.style.display = amIHost ? 'block' : 'none';
 
-    // 모든 플레이어가 준비되었는지 확인 (방장 제외)
-    const allReady = roomData.players.every(p => p.ready || p.isHost);
+    // 모든 플레이어가 준비되었는지 확인
+    const allReady = roomData.players.every(p => p.ready);
     startGameBtn.disabled = !allReady || roomData.players.length < 2; // 최소 2명 이상
 }
 
 
 async function handleLeaveRoom() {
     if (!currentRoomId) return;
-    await callLeaveRoom({ roomId: currentRoomId });
+    // Directly change hash, letting the router handle the leave logic
     window.location.hash = '#lobby';
 }
 
 async function handleStartGame() {
     if (!currentRoomId || startGameBtn.disabled) return;
     try {
-        await callStartGame({ roomId: currentRoomId });
-        // 게임이 시작되면 게임 뷰로 이동하는 로직이 필요 (추후 구현)
+        const result = await callStartGame({ roomId: currentRoomId });
+        // The game start logic will now be handled by Firestore listeners
+        // that react to the room status changing to 'playing' or a match document being created.
+        console.log("Game start requested:", result);
+        alert("게임을 시작합니다!");
     } catch(e) {
         alert(`게임 시작 실패: ${e.message}`);
     }
@@ -141,7 +144,6 @@ function renderCardSelection() {
         const el = document.createElement("div");
         el.className = "card";
         el.dataset.cardId = card.id;
-        // 속성(attribute) 표시 추가 및 스타일링을 위한 data-attr 추가
         el.dataset.attr = card.attribute;
         el.innerHTML = `
             <div class="card__title"><span>[${card.cost}] ${card.name}</span></div>
@@ -167,46 +169,35 @@ function toggleCard(cardId) {
     }
     renderCardSelection();
 
-    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
     const count = selectedCardIds.size;
     selectedCardCountEl.textContent = count;
-    // 유효 범위에 따라 색상 변경
     if (count >= 5 && count <= 10) {
         selectedCardCountEl.parentElement.classList.remove('danger');
     } else {
         selectedCardCountEl.parentElement.classList.add('danger');
     }
-    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
 }
 
 async function handleReady() {
-    // 이미 준비된 상태면 '준비 취소' 로직 실행
-    if (amIReady) {
-        readyBtn.disabled = true;
-        try {
-            await callSetPlayerReady({ roomId: currentRoomId, ready: false });
-        } catch (e) {
-            alert(`오류: ${e.message}`);
-        } finally {
-            readyBtn.disabled = false;
-        }
-        return;
-    }
-
-    // '준비 완료' 로직
-    if (!selectedCharacterId) return alert("캐릭터를 선택해주세요.");
-    if (selectedSkillNames.size !== 2) return alert("스킬을 2개 선택해주세요.");
-    if (selectedCardIds.size < 5 || selectedCardIds.size > 10) return alert("카드는 5~10장 선택해야 합니다.");
-
     readyBtn.disabled = true;
     try {
-        await callSetPlayerReady({
-            roomId: currentRoomId,
-            characterId: selectedCharacterId,
-            selectedSkills: Array.from(selectedSkillNames),
-            selectedCardIds: Array.from(selectedCardIds),
-            ready: true
-        });
+        if (amIReady) {
+            // "준비 취소" 로직
+            await callSetPlayerReady({ roomId: currentRoomId, ready: false });
+        } else {
+            // "준비 완료" 로직
+            if (!selectedCharacterId) throw new Error("캐릭터를 선택해주세요.");
+            if (selectedSkillNames.size !== 2) throw new Error("스킬을 2개 선택해주세요.");
+            if (selectedCardIds.size < 5 || selectedCardIds.size > 10) throw new Error("카드는 5~10장 선택해야 합니다.");
+
+            await callSetPlayerReady({
+                roomId: currentRoomId,
+                characterId: selectedCharacterId,
+                selectedSkills: Array.from(selectedSkillNames),
+                selectedCardIds: Array.from(selectedCardIds),
+                ready: true
+            });
+        }
     } catch (e) {
         alert(`오류: ${e.message}`);
     } finally {
@@ -215,8 +206,6 @@ async function handleReady() {
 }
 
 
-// public/js/tabs/room.js
-
 async function loadMyData() {
     const user = auth.currentUser;
     if (!user) {
@@ -224,12 +213,8 @@ async function loadMyData() {
         return;
     }
 
-    // 캐릭터 로드
     try {
-        // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
-        // 'approved' 상태만 가져오던 것을 'blocked'가 아닌 모든 캐릭터를 가져오도록 변경
         const charQ = query(collection(db, "userCharacters"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
-        // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
         const charSnap = await getDocs(charQ);
         myCharacters = charSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         console.log(`[Room] ${myCharacters.length}개의 캐릭터를 불러왔습니다.`);
@@ -239,7 +224,6 @@ async function loadMyData() {
         alert("내 캐릭터 정보를 불러오는 데 실패했습니다. 콘솔(F12)을 확인해주세요.");
     }
 
-    // 카드 로드
     try {
         const cardQ = query(collection(db, "userCards"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
         const cardSnap = await getDocs(cardQ);
@@ -259,7 +243,13 @@ function watchRoom(roomId) {
     const roomRef = doc(db, "rooms", roomId);
     unsubscribeRoom = onSnapshot(roomRef, (doc) => {
         if (doc.exists()) {
-            updateRoomView({ id: doc.id, ...doc.data() });
+            const roomData = { id: doc.id, ...doc.data() };
+            if (roomData.status === 'playing' && roomData.matchId) {
+                 // Here you would transition to the game view, e.g.:
+                 // window.location.hash = `#match/${roomData.matchId}`;
+                 alert(`게임이 시작되었습니다! (매치 ID: ${roomData.matchId})`);
+            }
+            updateRoomView(roomData);
         } else {
             alert("방이 사라졌습니다. 로비로 돌아갑니다.");
             window.location.hash = '#lobby';
@@ -269,6 +259,12 @@ function watchRoom(roomId) {
 
 export function setRoomId(roomId) {
     if (currentRoomId === roomId) return;
+    
+    if (unsubscribeRoom) {
+        unsubscribeRoom();
+        unsubscribeRoom = null;
+    }
+
     currentRoomId = roomId;
     setRoom(roomId); 
 
@@ -276,16 +272,16 @@ export function setRoomId(roomId) {
         watchRoom(roomId);
         loadMyData();
     } else {
-        if (unsubscribeRoom) unsubscribeRoom();
         updateRoomView(null);
     }
 }
 
-export function leaveRoom() {
-    if (currentRoomId) {
-        callLeaveRoom({ roomId: currentRoomId });
+export async function leaveRoom() {
+    const roomId = currentRoomId;
+    if (roomId) {
+        setRoomId(null); // Stop listening to the room immediately
+        await callLeaveRoom({ roomId });
     }
-    setRoomId(null);
 }
 
 export function initRoomTab() {
