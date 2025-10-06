@@ -239,7 +239,7 @@ function sanitizeCharacter(ch) {
 
 // --- 캐릭터 생성 함수 ---
 export const genCharacter = functions
-  .region("us-central1")
+  .region("asia-northeast3")
   .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 90 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
@@ -356,7 +356,7 @@ try {
 
 // --- 카드 생성 함수 ---
 export const genCard = functions
-  .region("us-central1")
+  .region("asia-northeast3")
   .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 60 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
@@ -465,9 +465,9 @@ try {
 // ===================================
 // ===== 전투 액션 함수들 (HTTPS) =====
 // ===================================
-export const apiPlayCard = functions.region("us-central1").https.onCall(playCard);
-export const apiReact = functions.region("us-central1").https.onCall(react);
-export const apiEndTurn = functions.region("us-central1").https.onCall(endTurn);
+export const apiPlayCard = functions.region("asia-northeast3").https.onCall(playCard);
+export const apiReact = functions.region("asia-northeast3").https.onCall(react);
+export const apiEndTurn = functions.region("asia-northeast3").https.onCall(endTurn);
 
 
 // ============================================
@@ -545,7 +545,7 @@ const RoomSchema = z.object({
  * 방 생성 함수
  */
 export const createRoom = functions
-    .region("us-central1")
+    .region("asia-northeast3")
     .https.onCall(async (data, context) => {
         if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         const { uid } = context.auth;
@@ -598,7 +598,7 @@ const SetPlayerReadySchema = z.object({
 });
 
 export const joinRoom = functions
-    .region("us-central1")
+    .region("asia-northeast3")
     .https.onCall(async (data, context) => {
         if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         const { uid } = context.auth;
@@ -645,7 +645,7 @@ export const joinRoom = functions
 
 
 export const setPlayerReady = functions
-    .region("us-central1")
+    .region("asia-northeast3")
     .https.onCall(async (data, context) => {
         if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         const { uid } = context.auth;
@@ -710,7 +710,7 @@ export const cleanupEmptyRooms = functions.pubsub.schedule('every 60 minutes').o
  * 카드 삭제 함수
  */
 export const deleteCard = functions
-    .region("us-central1")
+    .region("asia-northeast3")
     .https.onCall(async (data, context) => {
         if (!context.auth) {
             throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
@@ -745,7 +745,7 @@ export const deleteCard = functions
  * 방 나가기 함수
  */
 export const leaveRoom = functions
-    .region("us-central1")
+    .region("asia-northeast3")
     .https.onCall(async (data, context) => {
         if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         const { uid } = context.auth;
