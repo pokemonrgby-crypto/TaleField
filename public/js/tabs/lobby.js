@@ -1,5 +1,5 @@
 // public/js/tabs/lobby.js
-import { auth, db, callCreateRoom } from "../firebase.js";
+import { auth, db, callCreateRoom, callJoinRoom } from "../firebase.js";
 import { collection, onSnapshot, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
@@ -20,13 +20,22 @@ function renderRoom(room) {
         <div class="room-item__host">방장: ${room.hostNickname || '...'}</div>
         <div class="room-item__status">${room.status}</div>
     `;
-    li.addEventListener('click', () => {
-        if (room.status === 'waiting') {
+    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+    li.addEventListener('click', async () => {
+        if (room.status !== 'waiting') {
+            return alert("이미 시작되었거나 종료된 방입니다.");
+        }
+        try {
+            // 서버에 참여 요청을 먼저 보냄
+            await callJoinRoom({ roomId: room.id });
+            // 성공 시 방으로 화면 전환
             window.location.hash = `#room/${room.id}`;
-        } else {
-            alert("이미 시작되었거나 종료된 방입니다.");
+        } catch (e) {
+            console.error("방 참여 실패:", e);
+            alert(`방에 참여할 수 없습니다: ${e.message}`);
         }
     });
+    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
     return li;
 }
 
