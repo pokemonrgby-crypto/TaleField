@@ -4,14 +4,15 @@ import {
   needNickname, claimNickname,
   signInWithGoogle, signOutUser
 } from "./firebase.js";
-import { callGenCard, callCreateRoom, callJoinRoom } from "./firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { initMyCardsTab, loadMyCards } from "./tabs/my-cards.js";
 import { initCharacterGenTab } from "./tabs/character-gen.js";
-import { initMyCharactersTab, loadMyCharacters } from "./tabs/my-characters.js";
+import { initMyCharactersTab } from "./tabs/my-characters.js";
 import { initLobbyTab } from "./tabs/lobby.js";
 import { initRoomTab, leaveRoom, setRoomId } from "./tabs/room.js";
+import { initMatchTab, setMatchId } from "./tabs/match.js"; // Match 탭 추가
 import { state, setRoom } from "./state.js";
+import { callGenCard } from "./firebase.js";
 
 // --- DOM Elements ---
 const $ = (q) => document.querySelector(q);
@@ -56,11 +57,20 @@ $$('.btn-back').forEach(btn => {
 // --- 라우팅 ---
 async function handleRouteChange() {
   const hash = window.location.hash;
+
+  // 모든 탭 비활성화
+  $$(".bottom-nav__tabs button").forEach(b => b.classList.remove('active'));
+  
   if (hash.startsWith('#room/')) {
     const roomId = hash.substring(6);
     setRoomId(roomId);
+    setMatchId(null); // 매치 ID 초기화
     setActiveSection('view-room');
-    $$(".bottom-nav__tabs button").forEach(b => b.classList.remove('active'));
+  } else if (hash.startsWith('#match/')) {
+    const matchId = hash.substring(7);
+    setRoomId(null); // 룸 ID 초기화
+    setMatchId(matchId);
+    setActiveSection('view-match');
   } else {
     if (state.roomId && !isLeaving) {
         isLeaving = true;
@@ -68,6 +78,7 @@ async function handleRouteChange() {
         isLeaving = false;
     }
     setRoomId(null);
+    setMatchId(null);
     const targetTab = hash.substring(1) || 'lobby';
     setActiveTab(`view-${targetTab}`);
   }
@@ -91,7 +102,7 @@ onAuthStateChanged(auth, user => {
     checkNickname();
     handleRouteChange();
   } else {
-    if (state.roomId) {
+    if (state.roomId || state.matchId) {
         window.location.hash = '#lobby';
     }
   }
@@ -203,5 +214,6 @@ function initApp() {
     initMyCharactersTab();
     initLobbyTab();
     initRoomTab();
+    initMatchTab(); // Match 탭 초기화 추가
 }
 initApp();
