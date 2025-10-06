@@ -597,6 +597,53 @@ const SetPlayerReadySchema = z.object({
     ready: z.boolean(),
 });
 
+export const joinRoom = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = context.auth;
+        const { roomId } = z.object({ roomId: z.string() }).parse(data);
+
+        const profileSnap = await db.doc(`profiles/${uid}`).get();
+        const nickname = profileSnap.data()?.nickname;
+        if (!nickname) throw new HttpsError("failed-precondition", "닉네임이 설정되지 않았습니다.");
+
+        const roomRef = db.doc(`rooms/${roomId}`);
+
+        return await db.runTransaction(async (tx) => {
+            const roomSnap = await tx.get(roomRef);
+            if (!roomSnap.exists) throw new HttpsError("not-found", "존재하지 않는 방입니다.");
+            
+            const roomData = roomSnap.data();
+            if (roomData.status !== 'waiting') throw new HttpsError("failed-precondition", "이미 시작되었거나 종료된 방입니다.");
+            if (roomData.playerUids.includes(uid)) {
+                console.log(`Player ${uid} is already in room ${roomId}. Proceeding.`);
+                return { ok: true, message: "이미 참여한 방입니다." };
+            }
+            if (roomData.playerCount >= roomData.maxPlayers) throw new HttpsError("resource-exhausted", "방이 가득 찼습니다.");
+
+            const newPlayer = {
+                uid,
+                nickname,
+                isHost: false,
+                ready: false,
+                characterId: null,
+                selectedCardIds: [],
+                selectedSkills: [],
+            };
+
+            tx.update(roomRef, {
+                players: FieldValue.arrayUnion(newPlayer),
+                playerUids: FieldValue.arrayUnion(uid),
+                playerCount: FieldValue.increment(1),
+            });
+
+            return { ok: true };
+        });
+    });
+
+
+
 export const setPlayerReady = functions
     .region("us-central1")
     .https.onCall(async (data, context) => {
