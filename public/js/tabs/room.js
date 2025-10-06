@@ -166,6 +166,17 @@ function toggleCard(cardId) {
         selectedCardIds.add(cardId);
     }
     renderCardSelection();
+
+    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+    const count = selectedCardIds.size;
+    selectedCardCountEl.textContent = count;
+    // 유효 범위에 따라 색상 변경
+    if (count >= 5 && count <= 10) {
+        selectedCardCountEl.parentElement.classList.remove('danger');
+    } else {
+        selectedCardCountEl.parentElement.classList.add('danger');
+    }
+    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
 }
 
 async function handleReady() {
