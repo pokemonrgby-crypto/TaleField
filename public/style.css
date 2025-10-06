@@ -58,7 +58,6 @@ section.active { display: block; }
   gap: 20px;
 }
 
-/* ANCHOR: public/style.css (card-grid small) */
 .card-grid.small {
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
@@ -156,6 +155,12 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   font-weight: 600;
 }
 .btn.primary:hover { background: #00aaff; }
+.btn.danger {
+    background-color: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}
+
 
 /* 하단 플로팅 바 */
 .bottom-nav {
@@ -226,7 +231,6 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   gap: 8px;
 }
 
-/* ANCHOR: public/style.css (room styles) */
 .room-header {
   display: flex;
   justify-content: space-between;
@@ -286,13 +290,11 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   z-index: 1;
 }
 
-/* 준비 완료 시 선택 UI 비활성화 */
 #view-room.is-ready .selection-container,
 #view-room.is-ready .card-selection-container {
   pointer-events: none;
   opacity: 0.6;
 }
-/* 준비 버튼은 계속 활성화 */
 #view-room.is-ready #btn-ready {
   pointer-events: auto;
   opacity: 1;
@@ -319,7 +321,6 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 }
 .gen-hub-item h2 { margin-top: 0; }
 
-/* 카드 삭제 버튼 스타일 */
 .card__actions {
   padding: 8px 14px;
   border-top: 1px solid var(--line-main);
@@ -338,43 +339,49 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   color: #fff;
 }
 
-/* 뒤로가기 버튼용 헤더 */
 .page-header {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: -16px; /* page-title의 margin과 상쇄 */
+  margin-bottom: -16px; 
 }
 .page-header .page-title {
     margin-bottom: 24px;
 }
 
-/* ANCHOR: Add to public/style.css */
-#view-room.is-ready .selection-container::after,
-#view-room.is-ready .card-selection-container::after {
-  content: '준비 완료';
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  font-weight: bold;
-  border-radius: var(--radius-md);
-  z-index: 1;
-}
-
-#view-room.is-ready .selection-container,
-#view-room.is-ready .card-selection-container {
-  position: relative; /* ::after 포지셔닝 기준 */
-  pointer-events: none;
-  opacity: 0.6;
-}
-
 #view-room.is-ready #btn-ready {
-  pointer-events: auto;
-  opacity: 1;
-  background-color: var(--danger); /* 준비 취소 버튼 색상 변경 */
+  background-color: var(--danger); 
 }
+
+/* ▼▼▼▼▼ 신규 추가된 매치 화면 스타일 ▼▼▼▼▼ */
+.match-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+.match-layout {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 24px;
+    align-items: flex-start;
+}
+#match-players-area, #match-game-board, #match-my-area {
+    background: var(--bg-panel);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+#match-my-area {
+    grid-column: 1 / -1; /* 내 정보는 하단에 넓게 표시 */
+}
+.game-log {
+    background: var(--bg-input);
+    border-radius: 8px;
+    padding: 12px;
+    height: 200px;
+    overflow-y: auto;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+/* ▲▲▲▲▲ 신규 추가된 매치 화면 스타일 ▲▲▲▲▲ */
