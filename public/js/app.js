@@ -81,11 +81,17 @@ onAuthStateChanged(auth, user => {
   const loggedIn = !!user;
   $("#btn-google").style.display = loggedIn ? "none" : "";
   $("#btn-logout").style.display = loggedIn ? "" : "none";
+  
   if (loggedIn) {
     checkNickname();
-    loadMyCards();
-    loadMyCharacters();
+    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+    // 로그인 확정 후, 현재 해시(#) 경로를 다시 처리하도록 호출합니다.
+    // 이렇게 하면 룸 URL로 바로 접속했더라도 로그인 정보가 확정된 상태에서
+    // 룸 데이터를 불러오게 되어 경합 문제를 해결합니다.
+    handleRouteChange();
+    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
   } else {
+    // 로그아웃 시 로비로 이동
     window.location.hash = '#lobby';
   }
 });
