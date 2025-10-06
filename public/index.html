@@ -79,32 +79,37 @@
               <button id="btn-surrender" class="btn danger">항복</button>
           </div>
       </div>
-      <div class="match-layout">
-          <div id="match-players-area">
-              <h3>플레이어</h3>
-              <div id="match-player-list"></div>
-          </div>
-          <div id="match-game-board">
-              <h3>필드</h3>
-              <div id="match-log" class="game-log"></div>
-              <div id="match-stack" class="stack-area"></div>
-          </div>
-          <div id="match-my-area">
-              <div id="my-player-state"></div>
-              <h4>손패</h4>
-              <div id="my-hand" class="card-grid small"></div>
-              <div id="match-actions" class="actions-panel">
-                  <div class="target-info">
-                      선택한 카드: <span id="selected-card-name">없음</span><br>
-                      선택한 대상: <span id="selected-target-name">없음</span>
-                  </div>
-                  <div class="action-buttons">
-                      <button id="btn-play-card" class="btn primary" disabled>카드 사용</button>
-                      <button id="btn-end-turn" class="btn">턴 종료</button>
-                  </div>
-              </div>
-          </div>
-          </div>
+      <div class="match-grid-layout">
+        <div id="match-log-panel" class="match-panel">
+            <h3>필드 (게임 로그)</h3>
+            <div id="match-log" class="game-log"></div>
+        </div>
+        <div id="match-players-panel" class="match-panel">
+            <h3>플레이어</h3>
+            <div id="match-player-list"></div>
+            <div id="my-player-state"></div>
+        </div>
+        <div id="match-hand-panel" class="match-panel">
+            <h3>내 손패</h3>
+            <div id="my-hand" class="card-grid small"></div>
+        </div>
+        <div id="match-actions-panel" class="match-panel">
+            <h3>상세 정보 및 액션</h3>
+            <div id="selected-card-details">
+                <p class="muted">카드를 선택하면 정보가 표시됩니다.</p>
+            </div>
+            <div id="match-actions" class="actions-panel">
+                <div class="target-info">
+                    선택한 카드: <span id="selected-card-name">없음</span><br>
+                    선택한 대상: <span id="selected-target-name">없음</span>
+                </div>
+                <div class="action-buttons">
+                    <button id="btn-play-card" class="btn primary" disabled>카드 사용</button>
+                    <button id="btn-end-turn" class="btn">턴 종료</button>
+                </div>
+            </div>
+        </div>
+      </div>
     </section>
     
     <section id="view-my-characters">
