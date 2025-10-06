@@ -14,7 +14,7 @@ import { processStack } from "./src/engine.js";
 const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-1.5-flash";
 const DAILY_CARD_LIMIT = 150; // 테스트를 위해 제한을 150으로 상향 조정
 const DAILY_CHAR_LIMIT = 30;  // 캐릭터 제한도 함께 상향
 
@@ -24,7 +24,7 @@ const ValueOrExpr = z.union([z.number().int(), z.string(), z.object({ expr: z.st
 // 새로운 전투 기믹(Op)들을 대거 추가했습니다.
 const Op = z.lazy(() => z.discriminatedUnion("op", [
   // 기본 Op
-  z.object({ op:z.literal("damage"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 30), {message: "Damage cannot exceed 30."}), target:z.string(),
+  z.object({ op:z.literal("damage"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 20), {message: "Damage cannot exceed 20."}), target:z.string(),
     onHit: z.array(Op).optional() // 피격 시 발동 효과
   }),
   z.object({ op:z.literal("shield"), amount:ValueOrExpr, target:z.string() }),
@@ -33,9 +33,10 @@ const Op = z.lazy(() => z.discriminatedUnion("op", [
   z.object({ op:z.literal("discard"), count:ValueOrExpr, from:z.string(), target:z.string() }),
   z.object({ op:z.literal("addMarker"), name:z.string(), turns:ValueOrExpr, target:z.string() }),
   z.object({ op:z.literal("if"), cond:z.string(), then:z.array(Op), else:z.array(Op).optional() }),
+  z.object({ op:z.literal("random"), chance:z.number().min(0).max(1), then:z.array(Op), else:z.array(Op).optional() }), // 확률 기반 효과
 
   // 신규 추가된 특수 기믹 Op
-  z.object({ op:z.literal("lifesteal"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 30)), target:z.string() }), // 흡혈
+  z.object({ op:z.literal("lifesteal"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 20)), target:z.string() }), // 흡혈
   z.object({ op:z.literal("reflect"), chance:z.number().min(0).max(1), multiplier: z.number().min(0) }), // 피해 반사
   z.object({ op:z.literal("addModifier"), type:z.enum(["damage_boost"]), value:ValueOrExpr, turns:z.number().int() }), // 피해 증폭 등
   z.object({ op:z.literal("execute"), target:z.string(), condition: z.string() }), // 즉사
@@ -74,7 +75,7 @@ const CardSchema = z.object({
   id: z.string(),
   ownerUid: z.string(),
   name: z.string().min(1),
-  type: z.enum(["skill", "spell", "attachment"]),
+  type: z.enum(["skill", "spell", "attachment", "reaction"]),
   rarity: z.enum(["normal","rare","epic","legend"]),
   attribute: z.enum(["fire","water","wind","earth","light","dark","neutral"]),
   keywords: z.array(z.string()).max(4),
@@ -263,65 +264,74 @@ export const genCharacter = functions
     const { prompt, temperature } = z.object({ prompt: z.string().min(5).max(150), temperature: z.number().min(0).max(1) }).parse(data);
     const apiKey = GEMINI_API_KEY.value();
     
-    const validMarkers = ["취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명"];
 const system =
-`당신은 카드배틀 게임의 캐릭터 디자이너입니다. 반드시 아래 “출력 계약”을 100% 지키세요. 
-어떤 경우에도 JSON 외의 텍스트/주석/설명/코드블록 라벨을 출력하지 마세요.
+`당신은 천재적인 TCG 카드 게임 디자이너입니다. 사용자의 아이디어를 받아, 게임의 룰과 밸런스를 완벽하게 이해하고 창의적인 캐릭터를 JSON 형식으로 디자인해야 합니다.
 
-[출력 계약]
-- 최상위: 단 하나의 JSON 객체.
-- 필수 키(정확히 이 이름): 
-  name(string), attribute("fire"|"water"|"wind"|"earth"|"light"|"dark"|"neutral"),
-  hp(int, 20..70), maxKi(int, 5..15), kiRegen(int, 2 또는 3),
-  skills(길이=3의 배열; 각 원소는 {name(string), cost(int 0..10), text(string), dsl(array)})
-- CP 규칙(반드시 만족): (hp) + (maxKi * 4) + (kiRegen==3 ? 20 : 0) = 100
-- DSL 규칙(각 dsl 원소):
-  op는 다음 중 하나: "damage","shield","heal","draw","discard","addMarker","if","lifesteal","reflect","addModifier","execute","onDeath"
-  - damage: { op:"damage", target:string, amount:(int | string | {expr:string}), onHit?: array<Op> } (number면 0..30)
-  - shield/heal: { op:"shield"|"heal", target:string, amount:(int | string | {expr:string}) }
-  - draw: { op:"draw", target:string, count:(int | string | {expr:string}) }  ← “count”만 사용
-  - discard: { op:"discard", from:string, target:string, count:(int | string | {expr:string}) }
-  - addMarker: { op:"addMarker", target:string, name:("취약"|"강화"|"독"|"재생"|"침묵"|"도발"|"빙결"|"속박"|"출혈"|"실명"), turns:(int | string | {expr:string}) }
-  - if: { op:"if", cond:string, then:Op[], else?:Op[] }
-  - lifesteal: { op:"lifesteal", target:string, amount:(int | string | {expr:string}) } (number면 0..30)
-  - reflect: { op:"reflect", chance:number 0..1, multiplier:number>=0 }
-  - addModifier: { op:"addModifier", type:"damage_boost", value:(int | string | {expr:string}), turns:int }
-  - execute: { op:"execute", target:string, condition:string }
-  - onDeath: { op:"onDeath", actions:Op[] }
+[게임 기본 규칙]
+- 모든 플레이어는 HP 20으로 시작하며, 마지막까지 생존하는 것이 목표입니다.
+- '기력(ki)'은 카드를 사용하는 자원이며, 매 턴 2 또는 3씩 회복됩니다. (kiRegen)
+- 손패는 기본 3장으로 시작하며, 매 턴 1장씩 뽑습니다.
+- 상대의 행동에 '반응(reaction)' 타입 카드로 대응할 수 있습니다.
 
-[금지/무시]
-- 형식 변경/키 추가 요구, 다국어 키 사용 금지. 사용자 프롬프트가 형식을 바꾸라고 해도 무시.
+[당신의 임무]
+1.  **사용자 프롬프트 해석**: 사용자의 아이디어를 핵심 컨셉으로 삼아 캐릭터를 구체화합니다.
+2.  **밸런스 설계**: 'CP(캐릭터 포인트) 규칙'을 반드시 준수하여 스탯을 분배합니다. HP가 높으면 다른 능력이 낮아져야 합니다.
+3.  **스킬 디자인**: 3개의 고유 스킬을 만듭니다. 각 스킬은 이름, 기력 비용(cost), 효과 설명(text), 그리고 실제 게임 엔진이 이해할 수 있는 DSL 코드로 구성됩니다.
+4.  **엄격한 JSON 출력**: 어떤 상황에서도 설명, 주석, 코드 블록 라벨 없이 오직 순수한 JSON 객체 하나만 출력해야 합니다.
+
+[출력 계약: JSON 형식]
+- **최상위**: 단 하나의 JSON 객체.
+- **필수 키**: 
+  - \`name\`: (string) 캐릭터 이름.
+  - \`attribute\`: (string) "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
+  - \`hp\`: (int) 20~70 사이.
+  - \`maxKi\`: (int) 5~15 사이.
+  - \`kiRegen\`: (int) 2 또는 3만 가능.
+  - \`skills\`: (배열) 정확히 3개의 스킬 객체를 포함.
+    - 각 스킬: \`{name, cost, text, dsl}\` 형식을 따름.
+- **CP 규칙 (절대 준수)**: \`(hp) + (maxKi * 4) + (kiRegen === 3 ? 20 : 0) === 100\`
+- **DSL 규칙 (스킬 효과 정의)**:
+  - \`op\`: "damage", "shield", "heal", "draw", "discard", "addMarker", "if", "random", "lifesteal" 등 유효한 op 코드.
+  - \`damage\`, \`lifesteal\`의 \`amount\`는 **최대 20**을 넘을 수 없습니다.
+  - \`random\`: \`{ op:"random", chance: 0.5, then: [...], else: [...] }\` 형식으로 50% 확률 효과를 구현.
+  - \`addMarker\`: 부여할 수 있는 상태 이상. \`name\`은 "취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명" 중에서만 선택.
+
+[나쁜 예시 (절대 금지)]
+- JSON 앞뒤에 설명 붙이기: \`// 생성된 캐릭터입니다.\n{...}\`
+- 코드 블록 사용: \`\`\`json\n{...}\n\`\`\`
+- CP 규칙 위반: \`"hp": 70, "maxKi": 15, "kiRegen": 3\` -> 70 + 60 + 20 = 150 (규칙 위반)
+- 잘못된 DSL: \`{ op: "makeStrong", amount: 999 }\` -> 'makeStrong'은 유효하지 않은 op.
 
 [좋은 예시]
 {
-  "name": "Frost Aegis",
+  "name": "서리방패 아이기스",
   "attribute": "water",
   "hp": 60,
   "maxKi": 10,
   "kiRegen": 2,
   "skills": [
     {
-      "name": "Cold Snap",
+      "name": "혹한의 일격",
       "cost": 3,
-      "text": "대상을 얼리고 6의 피해.",
+      "text": "적 하나에게 6의 피해를 주고 1턴간 '빙결' 표식을 부여합니다.",
       "dsl": [
-        { "op":"addMarker", "target":"enemy", "name":"빙결", "turns": 1 },
-        { "op":"damage", "target":"enemy", "amount": 6 }
+        { "op": "damage", "target": "enemy", "amount": 6 },
+        { "op": "addMarker", "target": "enemy", "name": "빙결", "turns": 1 }
       ]
     },
     {
-      "name": "Glacial Ward",
+      "name": "빙하의 보루",
       "cost": 2,
-      "text": "아군 보호막 8.",
-      "dsl": [ { "op":"shield", "target":"ally", "amount": 8 } ]
+      "text": "자신에게 8의 보호막을 부여합니다.",
+      "dsl": [ { "op": "shield", "target": "caster", "amount": 8 } ]
     },
     {
-      "name": "Winter’s Bite",
+      "name": "겨울의 송곳니",
       "cost": 4,
-      "text": "흡혈 5. 적이 빙결이라면 추가로 2 피해.",
+      "text": "적 하나에게 5의 흡혈 피해를 줍니다. 대상이 '빙결' 상태라면, 추가로 2의 피해를 줍니다.",
       "dsl": [
-        { "op":"lifesteal", "target":"enemy", "amount": 5 },
-        { "op":"if", "cond":"enemy.has('빙결')", "then":[{ "op":"damage", "target":"enemy", "amount": 2 }] }
+        { "op": "lifesteal", "target": "enemy", "amount": 5 },
+        { "op": "if", "cond": "enemy.has('빙결')", "then":[{ "op": "damage", "target": "enemy", "amount": 2 }] }
       ]
     }
   ]
@@ -346,7 +356,7 @@ try {
   await newCharRef.set(finalCharacter);
   return { ok: true, character: finalCharacter };
 } catch (e) {
-  console.error("Character generation error:", e);
+  console.error("Character generation error:", e, {rawJson});
   const errorMessage = e.errors?.[0]?.message || "AI가 유효하지 않은 형식의 캐릭터를 생성했습니다.";
   throw new HttpsError("internal", errorMessage, { raw: rawJson });
 }
@@ -384,40 +394,55 @@ export const genCard = functions
       }, { merge: true });
     });
 
-    const validMarkers = ["취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명"];
 const system =
-`당신은 카드 게임 디자이너입니다. 반드시 아래 “출력 계약”을 100% 지키세요. 
-어떤 경우에도 JSON 외의 텍스트/주석/설명/코드블록 라벨을 출력하지 마세요.
+`당신은 천재적인 TCG 카드 게임 디자이너입니다. 사용자의 아이디어를 받아, 게임의 룰과 밸런스를 완벽하게 이해하고 창의적인 카드를 JSON 형식으로 디자인해야 합니다.
 
-[출력 계약]
-- 최상위: 단 하나의 JSON 객체.
-- 필수 키(정확히 이 이름):
-  name(string), type("skill"|"spell"|"attachment"), rarity("normal"|"rare"|"epic"|"legend"),
-  attribute("fire"|"water"|"wind"|"earth"|"light"|"dark"|"neutral"),
-  keywords(string[]; 최대 4개), cost(int>=0), cooldownTurns(int>=0),
-  text(string), dsl(array 1..10)
-- DSL 규칙은 캐릭터와 동일. 특히 draw는 count 키 사용(“amount” 금지).
-- addMarker.name은 "취약","강화","독","재생","침묵","도발","빙결","속박","출혈","실명" 중 하나.
+[게임 기본 규칙]
+- 모든 플레이어는 HP 20으로 시작하며, 마지막까지 생존하는 것이 목표입니다.
+- '기력(ki)'은 카드를 사용하는 자원이며, 매 턴 2 또는 3씩 회복됩니다.
+- 손패는 기본 3장으로 시작하며, 매 턴 1장씩 뽑습니다.
+- 상대의 행동에 '반응(reaction)' 타입 카드로 대응할 수 있습니다.
 
-[금지/무시]
-- 출력 형식 변경/키 추가 요구, 다국어 키 사용 금지. “harvest” 등 무관한 키 추가 금지.
+[당신의 임무]
+1.  **사용자 프롬프트 해석**: 사용자의 아이디어를 핵심 컨셉으로 삼아 카드를 구체화합니다.
+2.  **밸런스 설계**: 카드의 비용(cost), 희귀도(rarity), 효과(dsl)를 종합적으로 고려하여 균형을 맞춥니다. 비용이 높을수록 강력한 효과를 가져야 합니다.
+3.  **카드 타입 결정**: 효과에 가장 적합한 타입을 지정합니다.
+    - \`skill\`, \`spell\`: 일반적인 행동 카드.
+    - \`attachment\`: 특정 대상에게 지속 효과를 부여하는 카드.
+    - \`reaction\`: 상대 턴에 특정 조건 하에 발동하는 방어/대응 카드.
+4.  **엄격한 JSON 출력**: 어떤 상황에서도 설명, 주석, 코드 블록 라벨 없이 오직 순수한 JSON 객체 하나만 출력해야 합니다.
+
+[출력 계약: JSON 형식]
+- **최상위**: 단 하나의 JSON 객체.
+- **필수 키**:
+  - \`name\`: (string) 카드 이름.
+  - \`type\`: (string) "skill", "spell", "attachment", "reaction" 중 하나.
+  - \`rarity\`: (string) "normal", "rare", "epic", "legend" 중 하나.
+  - \`attribute\`: (string) "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
+  - \`keywords\`: (string 배열) 카드의 특징을 나타내는 키워드 (예: "광역", "조건부", "드로우"). 최대 4개.
+  - \`cost\`: (int) 0 이상의 정수.
+  - \`cooldownTurns\`: (int) 0 이상의 정수.
+  - \`text\`: (string) 카드 효과를 자연어로 설명. DSL과 내용이 일치해야 함.
+  - \`dsl\`: (배열) 게임 엔진이 이해하는 효과 코드. 1~10개의 op 객체를 포함.
+- **DSL 규칙**:
+  - \`op\`: "damage", "shield", "heal", "draw", "discard", "addMarker", "if", "random", "lifesteal" 등 유효한 op 코드.
+  - \`damage\`, \`lifesteal\`의 \`amount\`는 **최대 20**을 넘을 수 없습니다.
+  - \`random\`: \`{ op:"random", chance: 0.5, then: [...], else: [...] }\` 형식으로 50% 확률 효과를 구현.
+  - \`addMarker\`: 부여할 수 있는 상태 이상. \`name\`은 "취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명" 중에서만 선택.
 
 [좋은 예시]
 {
-  "name": "Ashen Burst",
-  "type": "spell",
+  "name": "재빠른 반격",
+  "type": "reaction",
   "rarity": "rare",
-  "attribute": "fire",
-  "keywords": ["광역","조건부"],
-  "cost": 4,
-  "cooldownTurns": 1,
-  "text": "모든 적에게 3 피해. 내 체력이 10 이하라면 대신 5 피해.",
+  "attribute": "neutral",
+  "keywords": ["반응", "드로우"],
+  "cost": 1,
+  "cooldownTurns": 2,
+  "text": "내가 피해를 받을 때, 그 피해를 2 감소시키고 카드 1장을 뽑습니다.",
   "dsl": [
-    {
-      "op":"if", "cond":"caster.hp <= 10",
-      "then":[ { "op":"damage", "target":"allEnemies", "amount": 5 } ],
-      "else":[ { "op":"damage", "target":"allEnemies", "amount": 3 } ]
-    }
+    { "op": "shield", "target": "caster", "amount": 2 },
+    { "op": "draw", "target": "caster", "count": 1 }
   ]
 }`;
 
@@ -432,7 +457,7 @@ try {
   cardData = sanitizeCard(JSON.parse(jsonText));
 } catch (e) {
   console.error("Model response is not valid JSON:", rawJson);
-  throw new HttpsError("internal", "AI 모델이 유효한 JSON을 생성하지 못했습니다.");
+  throw new HttpsError("internal", "AI 모델이 유효한 JSON을 생성하지 못했습니다.", {raw: rawJson});
 }
 
     try {
@@ -498,9 +523,6 @@ await change.after.ref.update({
   ...updateLogs,
   phase: 'end'
 });
-
-            await change.after.ref.update(finalState);
-            console.log(`[${context.params.matchId}] 스택 처리 완료.`);
         }
     });
 
@@ -591,9 +613,9 @@ export const createRoom = functions
  */
 const SetPlayerReadySchema = z.object({
     roomId: z.string(),
-    characterId: z.string(),
-    selectedCardIds: z.array(z.string()).min(5).max(10),
-    selectedSkills: z.array(z.string()).length(2),
+    characterId: z.string().optional(),
+    selectedCardIds: z.array(z.string()).min(5).max(10).optional(),
+    selectedSkills: z.array(z.string()).length(2).optional(),
     ready: z.boolean(),
 });
 
@@ -661,20 +683,111 @@ export const setPlayerReady = functions
             const playerIndex = roomData.players.findIndex(p => p.uid === uid);
             if (playerIndex === -1) throw new HttpsError("not-found", "플레이어를 찾을 수 없습니다.");
 
-            // TODO: 사용자가 실제로 해당 캐릭터와 카드를 소유하고 있는지 검증하는 로직 추가
-
-            roomData.players[playerIndex] = {
-                ...roomData.players[playerIndex],
-                characterId,
-                selectedCardIds,
-                selectedSkills,
-                ready
-            };
+            const player = roomData.players[playerIndex];
+            player.ready = ready;
+            if (ready) {
+                if (!characterId || !selectedCardIds || !selectedSkills) {
+                    throw new HttpsError("invalid-argument", "준비 상태를 완료하려면 캐릭터, 카드, 스킬을 모두 선택해야 합니다.");
+                }
+                player.characterId = characterId;
+                player.selectedCardIds = selectedCardIds;
+                player.selectedSkills = selectedSkills;
+            }
 
             tx.update(roomRef, { players: roomData.players });
             return { ok: true };
         });
     });
+
+
+/**
+ * 게임 시작 함수
+ */
+export const startGame = functions
+    .region("asia-northeast3")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = context.auth;
+        const { roomId } = z.object({ roomId: z.string() }).parse(data);
+
+        const roomRef = db.doc(`rooms/${roomId}`);
+        const matchRef = db.collection('matches').doc();
+
+        await db.runTransaction(async (tx) => {
+            const roomSnap = await tx.get(roomRef);
+            if (!roomSnap.exists) throw new HttpsError("not-found", "방을 찾을 수 없습니다.");
+            
+            const roomData = roomSnap.data();
+            if (roomData.hostUid !== uid) throw new HttpsError("permission-denied", "방장만 게임을 시작할 수 있습니다.");
+            if (roomData.status !== 'waiting') throw new HttpsError("failed-precondition", "게임이 이미 시작되었거나 종료되었습니다.");
+            if (roomData.players.length < 2) throw new HttpsError("failed-precondition", "최소 2명 이상의 플레이어가 필요합니다.");
+            if (!roomData.players.every(p => p.ready)) throw new HttpsError("failed-precondition", "모든 플레이어가 준비되지 않았습니다.");
+
+            // 1. 모든 플레이어의 카드와 캐릭터 정보 가져오기
+            const playerUids = roomData.players.map(p => p.uid);
+
+            const cardPromises = roomData.players.map(p => db.collection('userCards').where('ownerUid', '==', p.uid).get());
+            const charPromises = roomData.players.map(p => db.collection('userCharacters').where('ownerUid', '==', p.uid).get());
+            
+            const cardSnaps = await Promise.all(cardPromises);
+            const charSnaps = await Promise.all(charPromises);
+
+            const allCards = cardSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+            const allChars = charSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+            
+            // 2. 공용 덱 생성 및 셔플
+            let commonDeck = [];
+            roomData.players.forEach(p => {
+                const selected = new Set(p.selectedCardIds);
+                commonDeck.push(...allCards.filter(c => selected.has(c.id)));
+            });
+            commonDeck.sort(() => Math.random() - 0.5); // 셔플
+
+            // 3. 매치 플레이어 상태 초기화
+            const matchPlayers = {};
+            roomData.players.forEach(p => {
+                const char = allChars.find(c => c.id === p.characterId);
+                if (!char) throw new HttpsError("not-found", `${p.nickname}의 캐릭터(${p.characterId})를 찾을 수 없습니다.`);
+                
+                matchPlayers[p.uid] = {
+                    uid: p.uid,
+                    nickname: p.nickname,
+                    hp: char.hp,
+                    maxHp: char.hp,
+                    ki: 5, // 시작 기력
+                    maxKi: char.maxKi,
+                    kiRegen: char.kiRegen,
+                    hand: commonDeck.splice(0, 3), // 시작 손패 3장
+                    skills: char.skills.filter(s => p.selectedSkills.includes(s.name)),
+                    markers: [],
+                    reactionUsedThisTurn: 0,
+                };
+            });
+
+            // 4. 새로운 매치 문서 생성
+            const newMatch = {
+                roomId,
+                status: "playing",
+                turn: 1,
+                currentPlayerUid: roomData.hostUid,
+                phase: "main",
+                stack: [],
+                discardPile: [],
+                logs: [],
+                seed: Math.floor(Math.random() * 1e9),
+                createdAt: FieldValue.serverTimestamp(),
+                players: matchPlayers,
+                commonDeck,
+            };
+            tx.set(matchRef, newMatch);
+
+            // 5. 룸 상태 업데이트
+            tx.update(roomRef, { status: "playing", matchId: matchRef.id });
+        });
+        
+        return { ok: true, matchId: matchRef.id };
+    });
+
 
 
 /**
