@@ -9,6 +9,7 @@ const playerListEl = $("#match-player-list");
 const logEl = $("#match-log");
 const myHandEl = $("#my-hand");
 const myStateEl = $("#my-player-state");
+const selectedCardDetailsEl = $("#selected-card-details");
 
 // Action Panel Elements
 const playCardBtn = $("#btn-play-card");
@@ -22,11 +23,24 @@ let unsubscribeMatch = null;
 let selectedCardId = null;
 let selectedTargetUid = null;
 
+function renderCardDetails(card) {
+    if (!card) {
+        selectedCardDetailsEl.innerHTML = `<p class="muted">카드를 선택하면 정보가 표시됩니다.</p>`;
+        return;
+    }
+    selectedCardDetailsEl.innerHTML = `
+        <h4>[${card.cost}] ${card.name}</h4>
+        <p class="muted" style="font-size:0.85rem;">${card.attribute} / ${card.rarity} / ${card.type}</p>
+        <p>${card.text}</p>
+    `;
+}
+
 function updateActionPanel() {
     const myTurn = state.match?.currentPlayerUid === auth.currentUser?.uid;
     endTurnBtn.disabled = !myTurn;
     
-    const card = state.match?.players[auth.currentUser?.uid]?.hand.find(c => c.id === selectedCardId);
+    const myData = state.match?.players[auth.currentUser?.uid];
+    const card = myData?.hand.find(c => c.id === selectedCardId);
     selectedCardNameEl.textContent = card?.name || "없음";
     
     const target = state.match?.players[selectedTargetUid];
@@ -40,6 +54,11 @@ function selectCard(cardId) {
     document.querySelectorAll('#my-hand .card').forEach(el => {
         el.classList.toggle('selected', el.dataset.cardId === cardId);
     });
+
+    const myData = state.match?.players[auth.currentUser?.uid];
+    const card = myData?.hand.find(c => c.id === cardId);
+    renderCardDetails(card);
+
     updateActionPanel();
 }
 
@@ -59,12 +78,25 @@ function renderPlayerState(player) {
     const isCurrentTurn = state.match?.currentPlayerUid === player.uid;
 
     el.innerHTML = `
-        <strong>${player.nickname} ${isMe ? '(나)' : ''} ${isCurrentTurn ? '⏳' : ''}</strong>
+        <strong>${player.nickname} ${isCurrentTurn ? '⏳' : ''}</strong>
         <div>HP: ${player.hp}/${player.maxHp} | KI: ${player.ki}/${player.maxKi}</div>
         <div>Hand: ${player.hand?.length || 0}</div>
     `;
     el.addEventListener('click', () => selectTarget(player.uid));
     return el;
+}
+
+function renderMyState(playerData) {
+    if (!playerData) {
+        myStateEl.innerHTML = "";
+        return;
+    }
+    myStateEl.innerHTML = `
+        <h4>내 상태</h4>
+        <strong>${playerData.nickname} (나)</strong>
+        <div>HP: ${playerData.hp}/${playerData.maxHp}</div>
+        <div>KI: ${playerData.ki}/${playerData.maxKi}</div>
+    `;
 }
 
 function renderMyHand(hand = []) {
@@ -95,17 +127,20 @@ function updateMatchView(matchData) {
 
     playerListEl.innerHTML = "";
     Object.values(matchData.players).forEach(p => {
-        playerListEl.appendChild(renderPlayerState(p));
+        if (p.uid !== auth.currentUser?.uid) { // 나를 제외한 다른 플레이어
+            playerListEl.appendChild(renderPlayerState(p));
+        }
     });
 
     const myData = matchData.players[auth.currentUser?.uid];
     if (myData) {
-        myStateEl.innerHTML = ""; 
+        renderMyState(myData);
         renderMyHand(myData.hand);
     }
 
     logEl.innerHTML = (matchData.logs || [])
-        .map(l => `<div>[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}</div>`)
+        .slice(-50) // 최근 50개 로그만 표시
+        .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
         .join('') || '<div class="muted">게임 로그가 여기에 표시됩니다.</div>';
     logEl.scrollTop = logEl.scrollHeight;
 
@@ -122,7 +157,6 @@ async function handlePlayCard() {
             cardId: selectedCardId,
             targetUid: selectedTargetUid,
         });
-        // Reset selections after playing
         selectCard(null);
         selectTarget(null);
     } catch (e) {
