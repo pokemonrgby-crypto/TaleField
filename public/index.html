@@ -90,13 +90,23 @@
               <div id="match-stack" class="stack-area"></div>
           </div>
           <div id="match-my-area">
-              <h3>내 정보</h3>
               <div id="my-player-state"></div>
               <h4>손패</h4>
               <div id="my-hand" class="card-grid small"></div>
+              <div id="match-actions" class="actions-panel">
+                  <div class="target-info">
+                      선택한 카드: <span id="selected-card-name">없음</span><br>
+                      선택한 대상: <span id="selected-target-name">없음</span>
+                  </div>
+                  <div class="action-buttons">
+                      <button id="btn-play-card" class="btn primary" disabled>카드 사용</button>
+                      <button id="btn-end-turn" class="btn">턴 종료</button>
+                  </div>
+              </div>
           </div>
-      </div>
+          </div>
     </section>
+    
     <section id="view-my-characters">
         <h1 class="page-title">내 캐릭터</h1>
         <div class="toolbar">
@@ -165,7 +175,7 @@
       <button data-tab="view-my-cards">내 카드</button>
       <button data-tab="view-gen-hub">생성</button>
     </div>
-    </nav>
+  </nav>
 
   <div id="nickname-modal" style="display:none;">
     <div class="card">
