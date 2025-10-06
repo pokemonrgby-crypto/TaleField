@@ -67,7 +67,7 @@ export async function playCard(data, context) {
  * 반응 카드 사용 요청 처리 (리액션 페이즈)
  */
 export async function react(data, context) {
-    const db = getFirestore(); // 함수가 호출될 때 Firestore 인스턴스를 가져옵니다.
+    const db = getFirestore();
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const { uid } = context.auth;
     const { matchId, cardId, targetUid } = z.object({
@@ -83,10 +83,43 @@ export async function react(data, context) {
         if (!matchSnap.exists) throw new HttpsError("not-found", "매치를 찾을 수 없습니다.");
         
         const matchData = matchSnap.data();
-        if (matchData.phase !== 'reaction') throw new HttpsError("failed-precondition", "지금은 반응 카드를 낼 수 없습니다.");
+        const player = matchData.players[uid];
 
-        // (playCard와 유사한 로직 추가 필요)
+        // 1. 유효성 검사
+        if (matchData.phase !== 'reaction') throw new HttpsError("failed-precondition", "지금은 반응 카드를 낼 수 없습니다.");
         
+        const cardInHandIndex = player.hand.findIndex(c => c.id === cardId);
+        if (cardInHandIndex === -1) throw new HttpsError("not-found", "해당 카드가 손에 없습니다.");
+        
+        const card = player.hand[cardInHandIndex];
+        if (card.type !== 'reaction') throw new HttpsError("failed-precondition", "반응 타입의 카드가 아닙니다.");
+        if (player.ki < card.cost) throw new HttpsError("failed-precondition", "기력이 부족합니다.");
+        if ((player.reactionUsedThisTurn || 0) >= 2) throw new HttpsError("failed-precondition", "이번 턴에 반응 카드를 더 이상 낼 수 없습니다.");
+
+        // 2. 비용 지불 및 카드 이동
+        player.ki -= card.cost;
+        player.reactionUsedThisTurn = (player.reactionUsedThisTurn || 0) + 1;
+        player.hand.splice(cardInHandIndex, 1);
+        matchData.discardPile.push(card);
+
+        // 3. 스택에 카드 효과 추가 (LIFO이므로 맨 위에 추가됨)
+        const newOps = card.dsl.map(op => ({
+            ...op,
+            casterUid: uid,
+            targetUid: targetUid,
+            cardName: card.name,
+        }));
+        
+        // 반응 카드는 스택의 맨 위에 추가됩니다.
+        const newStack = [...newOps, ...matchData.stack];
+
+        // 4. Firestore 업데이트
+        tx.update(matchRef, {
+            [`players.${uid}`]: player,
+            discardPile: matchData.discardPile,
+            stack: newStack,
+        });
+
         return { ok: true, message: "반응했습니다." };
     });
 }
@@ -95,7 +128,7 @@ export async function react(data, context) {
  * 턴 종료 요청 처리
  */
 export async function endTurn(data, context) {
-    const db = getFirestore(); // 함수가 호출될 때 Firestore 인스턴스를 가져옵니다.
+    const db = getFirestore();
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const { uid } = context.auth;
     const { matchId } = z.object({ matchId: z.string() }).parse(data);
@@ -110,14 +143,24 @@ export async function endTurn(data, context) {
         if (matchData.currentPlayerUid !== uid) throw new HttpsError("failed-precondition", "당신의 턴이 아닙니다.");
         if (matchData.phase !== 'main' && matchData.phase !== 'end') throw new HttpsError("failed-precondition", "진행 중인 효과가 있어 턴을 마칠 수 없습니다.");
 
+        // 턴 종료 로직: 다음 플레이어 결정, 기력 회복, 카드 드로우 등
         const playerUids = Object.keys(matchData.players);
         const currentIndex = playerUids.indexOf(uid);
         const nextPlayerUid = playerUids[(currentIndex + 1) % playerUids.length];
+        
+        const nextPlayer = matchData.players[nextPlayerUid];
+        nextPlayer.ki = Math.min(nextPlayer.maxKi, nextPlayer.ki + nextPlayer.kiRegen);
+        if (matchData.commonDeck.length > 0) {
+            nextPlayer.hand.push(matchData.commonDeck.pop());
+        }
+        nextPlayer.reactionUsedThisTurn = 0; // 턴 시작 시 반응 횟수 초기화
 
         tx.update(matchRef, {
             currentPlayerUid: nextPlayerUid,
             turn: matchData.turn + 1,
-            phase: 'main'
+            phase: 'main',
+            [`players.${nextPlayerUid}`]: nextPlayer,
+            commonDeck: matchData.commonDeck
         });
 
         return { ok: true };
