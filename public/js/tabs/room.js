@@ -74,14 +74,14 @@ async function handleLeaveRoom() {
 
 async function handleStartGame() {
     if (!currentRoomId || startGameBtn.disabled) return;
+    startGameBtn.disabled = true;
     try {
-        const result = await callStartGame({ roomId: currentRoomId });
-        // The game start logic will now be handled by Firestore listeners
-        // that react to the room status changing to 'playing' or a match document being created.
-        console.log("Game start requested:", result);
-        alert("게임을 시작합니다!");
+        await callStartGame({ roomId: currentRoomId });
+        // The game start will be handled by the onSnapshot listener in watchRoom
+        // which will navigate to the match view.
     } catch(e) {
         alert(`게임 시작 실패: ${e.message}`);
+        startGameBtn.disabled = false;
     }
 }
 
@@ -182,10 +182,8 @@ async function handleReady() {
     readyBtn.disabled = true;
     try {
         if (amIReady) {
-            // "준비 취소" 로직
             await callSetPlayerReady({ roomId: currentRoomId, ready: false });
         } else {
-            // "준비 완료" 로직
             if (!selectedCharacterId) throw new Error("캐릭터를 선택해주세요.");
             if (selectedSkillNames.size !== 2) throw new Error("스킬을 2개 선택해주세요.");
             if (selectedCardIds.size < 5 || selectedCardIds.size > 10) throw new Error("카드는 5~10장 선택해야 합니다.");
@@ -217,22 +215,18 @@ async function loadMyData() {
         const charQ = query(collection(db, "userCharacters"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
         const charSnap = await getDocs(charQ);
         myCharacters = charSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log(`[Room] ${myCharacters.length}개의 캐릭터를 불러왔습니다.`);
         renderCharacterSelection();
     } catch (error) {
         console.error("[Room] 내 캐릭터를 불러오는 중 오류 발생:", error);
-        alert("내 캐릭터 정보를 불러오는 데 실패했습니다. 콘솔(F12)을 확인해주세요.");
     }
 
     try {
         const cardQ = query(collection(db, "userCards"), where("ownerUid", "==", user.uid), where("status", "!=", "blocked"));
         const cardSnap = await getDocs(cardQ);
         myCards = cardSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log(`[Room] ${myCards.length}개의 카드를 불러왔습니다.`);
         renderCardSelection();
     } catch(error) {
         console.error("[Room] 내 카드를 불러오는 중 오류 발생:", error);
-        alert("내 카드 정보를 불러오는 데 실패했습니다. 콘솔(F12)을 확인해주세요.");
     }
 }
 
@@ -245,14 +239,17 @@ function watchRoom(roomId) {
         if (doc.exists()) {
             const roomData = { id: doc.id, ...doc.data() };
             if (roomData.status === 'playing' && roomData.matchId) {
-                 // Here you would transition to the game view, e.g.:
-                 // window.location.hash = `#match/${roomData.matchId}`;
-                 alert(`게임이 시작되었습니다! (매치 ID: ${roomData.matchId})`);
+                 // 게임 시작! 매치 화면으로 이동
+                 if (window.location.hash !== `#match/${roomData.matchId}`) {
+                    window.location.hash = `#match/${roomData.matchId}`;
+                 }
             }
             updateRoomView(roomData);
         } else {
             alert("방이 사라졌습니다. 로비로 돌아갑니다.");
-            window.location.hash = '#lobby';
+            if (window.location.hash !== '#lobby') {
+                window.location.hash = '#lobby';
+            }
         }
     });
 }
@@ -279,7 +276,7 @@ export function setRoomId(roomId) {
 export async function leaveRoom() {
     const roomId = currentRoomId;
     if (roomId) {
-        setRoomId(null); // Stop listening to the room immediately
+        setRoomId(null); 
         await callLeaveRoom({ roomId });
     }
 }
