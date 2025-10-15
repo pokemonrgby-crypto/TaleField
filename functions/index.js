@@ -15,81 +15,66 @@ const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
 const GEMINI_MODEL = "gemini-1.5-flash";
-const DAILY_CARD_LIMIT = 150; // 테스트를 위해 제한을 150으로 상향 조정
-const DAILY_CHAR_LIMIT = 30;  // 캐릭터 제한도 함께 상향
+const DAILY_ARTIFACT_LIMIT = 150; // 성물 생성 제한
+const DAILY_SHIN_LIMIT = 30;  // 신 생성 제한
+// 하위 호환성
+const DAILY_CARD_LIMIT = DAILY_ARTIFACT_LIMIT;
+const DAILY_CHAR_LIMIT = DAILY_SHIN_LIMIT;
 
-// --- Zod 스키마 정의 ---
+// --- Zod 스키마 정의 (GodField) ---
 const ValueOrExpr = z.union([z.number().int(), z.string(), z.object({ expr: z.string() })]);
 
-// 새로운 전투 기믹(Op)들을 대거 추가했습니다.
+// GodField DSL Op 정의
 const Op = z.lazy(() => z.discriminatedUnion("op", [
   // 기본 Op
-  z.object({ op:z.literal("damage"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 20), {message: "Damage cannot exceed 20."}), target:z.string(),
-    onHit: z.array(Op).optional() // 피격 시 발동 효과
+  z.object({ 
+    op: z.literal("damage"), 
+    amount: ValueOrExpr, 
+    attribute: z.enum(["無", "火", "水", "木", "土", "光", "暗"]).optional(),
+    target: z.string(),
+    onHit: z.array(Op).optional()
   }),
-  z.object({ op:z.literal("shield"), amount:ValueOrExpr, target:z.string() }),
-  z.object({ op:z.literal("heal"), amount:ValueOrExpr, target:z.string() }),
-  z.object({ op:z.literal("draw"), count:ValueOrExpr, target:z.string() }),
-  z.object({ op:z.literal("discard"), count:ValueOrExpr, from:z.string(), target:z.string() }),
-  z.object({ op:z.literal("addMarker"), name:z.string(), turns:ValueOrExpr, target:z.string() }),
-  z.object({ op:z.literal("if"), cond:z.string(), then:z.array(Op), else:z.array(Op).optional() }),
-  z.object({ op:z.literal("random"), chance:z.number().min(0).max(1), then:z.array(Op), else:z.array(Op).optional() }), // 확률 기반 효과
-
-  // 신규 추가된 특수 기믹 Op
-  z.object({ op:z.literal("lifesteal"), amount:ValueOrExpr.refine(v => (typeof v !== 'number' || v <= 20)), target:z.string() }), // 흡혈
-  z.object({ op:z.literal("reflect"), chance:z.number().min(0).max(1), multiplier: z.number().min(0) }), // 피해 반사
-  z.object({ op:z.literal("addModifier"), type:z.enum(["damage_boost"]), value:ValueOrExpr, turns:z.number().int() }), // 피해 증폭 등
-  z.object({ op:z.literal("execute"), target:z.string(), condition: z.string() }), // 즉사
-  z.object({ op:z.literal("onDeath"), actions:z.array(Op) }) // 동귀어진 등
+  z.object({ op: z.literal("heal"), amount: ValueOrExpr, target_stat: z.enum(["hp", "mp", "gold"]).optional(), target: z.string() }),
+  z.object({ op: z.literal("apply_disaster"), disasterName: z.enum(["병", "안개", "섬광", "꿈", "먹구름"]), target: z.string() }),
+  z.object({ op: z.literal("remove_disaster"), disasterName: z.string().optional(), target: z.string() }),
+  z.object({ op: z.literal("modify_stat"), target_stat: z.enum(["hp", "mp", "gold"]), amount: ValueOrExpr, target: z.string() }),
+  z.object({ op: z.literal("draw"), count: ValueOrExpr, target: z.string() }),
+  z.object({ op: z.literal("discard"), count: ValueOrExpr, target: z.string() }),
+  z.object({ op: z.literal("reflect_damage"), multiplier: z.number().min(0).optional() }),
+  z.object({ op: z.literal("absorb_hp"), amount: ValueOrExpr, target: z.string() }),
+  z.object({ op: z.literal("if"), cond: z.string(), then: z.array(Op), else: z.array(Op).optional() }),
+  z.object({ op: z.literal("random"), chance: z.number().min(0).max(1), then: z.array(Op), else: z.array(Op).optional() }),
+  z.object({ op: z.literal("on_user_death"), dsl: z.array(Op) }),
+  z.object({ op: z.literal("equip"), slot: z.enum(["weapon", "shield", "accessory"]) }),
+  z.object({ op: z.literal("change_attribute"), from: z.string(), to: z.string(), target: z.string() })
 ]));
-// z.lazy()로 감싸진 스키마의 내부 옵션에 접근하기 위해 .schema를 추가합니다.
+
 const validOps = new Set(Op.schema.options.map(o => o.shape.op.value));
 
-
-const SkillSchema = z.object({
-    name: z.string(),
-    cost: z.number().int().min(0).max(10),
-    text: z.string(),
-    dsl: z.array(Op)
-});
-
-// 새로운 스탯 시스템을 Zod 스키마에 반영했습니다.
-const CharacterSchema = z.object({
-    id: z.string(),
-    ownerUid: z.string(),
-    name: z.string(),
-    attribute: z.enum(["fire", "water", "wind", "earth", "light", "dark", "neutral"]),
-    hp: z.number().int().min(20).max(70),
-    maxKi: z.number().int().min(5).max(15),
-    kiRegen: z.number().int().refine(v => v === 2 || v === 3), // 코스트 회복량
-    skills: z.array(SkillSchema).length(3),
-    status: z.enum(["pending", "approved", "blocked"]).default("pending"),
-    meta: z.any(),
-    createdAt: z.any(),
-}).refine(data => (data.hp) + (data.maxKi * 4) + (data.kiRegen === 3 ? 20 : 0) === 100, {
-    message: "Stat points must sum up to 100.",
-    path: ["hp", "maxKi", "kiRegen"],
-});
-
-const CardSchema = z.object({
+// 성물(Artifact) 스키마
+const ArtifactSchema = z.object({
   id: z.string(),
   ownerUid: z.string(),
   name: z.string().min(1),
-  type: z.enum(["skill", "spell", "attachment", "reaction"]),
-  rarity: z.enum(["normal","rare","epic","legend"]),
-  attribute: z.enum(["fire","water","wind","earth","light","dark","neutral"]),
-  keywords: z.array(z.string()).max(4),
-  cost: z.number().int().min(0),
-  cooldownTurns: z.number().int().min(0).default(0), // AI가 자주 누락하여 기본값 추가
-  dsl: z.array(Op).min(1).max(10),
+  cardType: z.enum(["weapon", "armor", "item", "miracle"]),
+  attribute: z.enum(["無", "火", "水", "木", "土", "光", "暗"]),
   text: z.string(),
+  stats: z.object({
+    attack: z.number().int().optional(),
+    defense: z.number().int().optional(),
+    durability: z.number().int().optional(),
+    mpCost: z.number().int().optional(),
+    goldValue: z.number().int().optional(),
+  }).optional(),
+  disasterToApply: z.enum(["병", "안개", "섬광", "꿈", "먹구름"]).optional(),
+  dsl: z.array(Op).min(1).max(10),
   checks: z.object({
     banned: z.boolean(),
     version: z.number().int(),
     validatorScore: z.number(),
     errors: z.array(z.string()).default([]),
   }),
-  status: z.enum(["pending","approved","blocked"]).default("pending"),
+  status: z.enum(["pending", "approved", "blocked"]).default("pending"),
   meta: z.object({
     model: z.string().optional(),
     temperature: z.number().optional()
@@ -97,9 +82,41 @@ const CardSchema = z.object({
   createdAt: z.any(),
 });
 
-const GenCardReqSchema = z.object({
+// 기적 스키마 (신의 고유 기적용)
+const MiracleSchema = z.object({
+  name: z.string(),
+  cardType: z.literal("miracle"),
+  attribute: z.enum(["無", "火", "水", "木", "土", "光", "暗"]),
+  text: z.string(),
+  stats: z.object({
+    mpCost: z.number().int()
+  }),
+  dsl: z.array(Op)
+});
+
+// 신(Shin) 스키마
+const ShinSchema = z.object({
+  id: z.string(),
+  ownerUid: z.string(),
+  name: z.string(),
+  description: z.string(),
+  uniqueMiracles: z.array(MiracleSchema).min(1).max(2),
+  status: z.enum(["pending", "approved", "blocked"]).default("pending"),
+  meta: z.object({
+    model: z.string().optional(),
+    temperature: z.number().optional()
+  }).optional(),
+  createdAt: z.any(),
+});
+
+const GenArtifactReqSchema = z.object({
   prompt: z.string().min(5).max(150),
   powerCap: z.number().int().min(1).max(20).default(10),
+  temperature: z.number().min(0).max(1).default(0.8)
+});
+
+const GenShinReqSchema = z.object({
+  prompt: z.string().min(5).max(150),
   temperature: z.number().min(0).max(1).default(0.8)
 });
 
@@ -141,24 +158,27 @@ function extractFirstJsonObject(text) {
   throw new Error('Unbalanced JSON braces.');
 }
 
-// ANCHOR: functions/index.js (normalizeDslOps with target fix)
+// ANCHOR: functions/index.js (normalizeDslOps for GodField)
 function normalizeDslOps(dsl) {
   if (!Array.isArray(dsl)) return [];
 
   const opCorrections = {
-    'damageEnemy': 'damage',
     'dealDamage': 'damage',
-    'addShield': 'shield',
     'restoreHealth': 'heal',
     'drawCard': 'draw',
     'discardCard': 'discard',
-    'applyMarker': 'addMarker',
-    'addStatus': 'addMarker',
+    'applyDisaster': 'apply_disaster',
+    'removeDisaster': 'remove_disaster',
+    'modifyStat': 'modify_stat',
+    'reflectDamage': 'reflect_damage',
+    'absorbHp': 'absorb_hp',
     'conditional': 'if',
+    'onUserDeath': 'on_user_death',
+    'changeAttribute': 'change_attribute'
   };
   
   // 'target'이 필수인 op 목록
-  const opsRequiringTarget = new Set(['damage', 'shield', 'heal', 'draw', 'discard', 'addMarker', 'lifesteal', 'execute']);
+  const opsRequiringTarget = new Set(['damage', 'heal', 'apply_disaster', 'remove_disaster', 'modify_stat', 'draw', 'discard', 'absorb_hp', 'change_attribute']);
 
   const normalized = dsl.map(op => {
     if (!op || typeof op !== 'object' || !op.op) return null;
@@ -179,18 +199,11 @@ function normalizeDslOps(dsl) {
       op.count = op.amount;
       delete op.amount;
     }
-    if (op.op === 'addMarker') {
-      if ('duration' in op) {
-        op.turns = op.duration;
-        delete op.duration;
-      }
-      if (!('turns' in op)) op.turns = 1;
-    }
     
-    // 4. target이 없는 경우 기본값 부여 (핵심 수정)
+    // 4. target이 없는 경우 기본값 부여
     if (opsRequiringTarget.has(op.op) && !op.target) {
         // 피해를 주는 효과는 'enemy', 이로운 효과는 'caster'를 기본값으로 설정
-        if (op.op === 'damage' || op.op === 'lifesteal' || op.op === 'execute') {
+        if (op.op === 'damage' || op.op === 'absorb_hp' || op.op === 'apply_disaster') {
             op.target = 'enemy';
         } else {
             op.target = 'caster';
@@ -198,12 +211,11 @@ function normalizeDslOps(dsl) {
         console.warn(`Missing target for op '${op.op}', defaulting to '${op.target}'`);
     }
 
-
     // 5. 재귀적으로 내부 DSL 처리
     if (op.onHit) op.onHit = normalizeDslOps(op.onHit);
     if (op.then) op.then = normalizeDslOps(op.then);
     if (op.else) op.else = normalizeDslOps(op.else);
-    if (op.actions) op.actions = normalizeDslOps(op.actions);
+    if (op.dsl) op.dsl = normalizeDslOps(op.dsl);
     
     return op;
   }).filter(Boolean); // null 값을 제거하여 최종 배열 생성
@@ -211,35 +223,41 @@ function normalizeDslOps(dsl) {
   return normalized;
 }
 
-
 function normalizeAttribute(obj) {
-  // 혹시 모델이 한글 속성으로 낼 때 대비(실전에서 종종 생김)
-  const map = { 불:"fire", 물:"water", 바람:"wind", 흙:"earth", 빛:"light", 어둠:"dark", 무:"neutral", 무속성:"neutral" };
-  if (typeof obj.attribute === 'string' && map[obj.attribute]) obj.attribute = map[obj.attribute];
-}
-
-function sanitizeCard(card) {
-  // 기본값 강제: cooldownTurns 없으면 0
-  if (typeof card.cooldownTurns !== 'number') card.cooldownTurns = 0;
-  // keywords가 문자열 하나로 올 때 배열화
-  if (typeof card.keywords === 'string') card.keywords = [card.keywords];
-  normalizeAttribute(card);
-  card.dsl = normalizeDslOps(card.dsl);
-  return card;
-}
-
-function sanitizeCharacter(ch) {
-  normalizeAttribute(ch);
-  for (const s of ch.skills || []) {
-    s.dsl = normalizeDslOps(s.dsl);
+  // GodField 속성 정규화
+  const map = { 
+    "무": "無", "무속성": "無", "neutral": "無",
+    "불": "火", "fire": "火", "화": "火",
+    "물": "水", "water": "水", "수": "水",
+    "나무": "木", "wood": "木", "목": "木",
+    "흙": "土", "earth": "土", "토": "土",
+    "빛": "光", "light": "光", "광": "光",
+    "어둠": "暗", "dark": "暗", "암": "暗"
+  };
+  if (typeof obj.attribute === 'string' && map[obj.attribute]) {
+    obj.attribute = map[obj.attribute];
   }
-  return ch;
+}
+
+function sanitizeArtifact(artifact) {
+  normalizeAttribute(artifact);
+  if (!artifact.stats) artifact.stats = {};
+  artifact.dsl = normalizeDslOps(artifact.dsl);
+  return artifact;
+}
+
+function sanitizeShin(shin) {
+  for (const miracle of shin.uniqueMiracles || []) {
+    normalizeAttribute(miracle);
+    miracle.dsl = normalizeDslOps(miracle.dsl);
+  }
+  return shin;
 }
 
 
 
-// --- 캐릭터 생성 함수 ---
-export const genCharacter = functions
+// --- 신(Shin) 생성 함수 ---
+export const genShin = functions
   .region("asia-northeast3")
   .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 90 })
   .https.onCall(async (data, context) => {
@@ -253,129 +271,101 @@ export const genCharacter = functions
         let count = 0;
         if (profileSnap.exists) {
             const d = profileSnap.data();
-            if (d.lastCharCreationDate === today) count = d.charCreationCount || 0;
+            if (d.lastShinCreationDate === today) count = d.shinCreationCount || 0;
         }
         if (count >= DAILY_CHAR_LIMIT) {
-            throw new HttpsError("resource-exhausted", `오늘 캐릭터 생성 제한(${DAILY_CHAR_LIMIT}개)을 모두 사용했습니다.`);
+            throw new HttpsError("resource-exhausted", `오늘 신 생성 제한(${DAILY_CHAR_LIMIT}개)을 모두 사용했습니다.`);
         }
-        tx.set(profileRef, { lastCharCreationDate: today, charCreationCount: count + 1 }, { merge: true });
+        tx.set(profileRef, { lastShinCreationDate: today, shinCreationCount: count + 1 }, { merge: true });
     });
 
-    const { prompt, temperature } = z.object({ prompt: z.string().min(5).max(150), temperature: z.number().min(0).max(1) }).parse(data);
+    const { prompt, temperature } = GenShinReqSchema.parse(data);
     const apiKey = GEMINI_API_KEY.value();
     
 const system =
-`당신은 천재적인 TCG 카드 게임 디자이너입니다. 사용자의 아이디어를 받아, 게임의 룰과 밸런스를 완벽하게 이해하고 창의적인 캐릭터를 JSON 형식으로 디자인해야 합니다.
+`당신은 차기 지구신 후보를 후원하는 상급신입니다. 사용자의 아이디어를 받아, 예언자에게 강력한 가호를 내려줄 '신'과 그의 '고유 기적'을 JSON으로 디자인하십시오.
 
-[게임 기본 규칙]
-- 이 게임은 2~8명이 함께하는 갓필드 스타일의 다자간 배틀입니다.
-- 모든 플레이어가 제출한 카드를 섞어 만든 '공용 덱'을 사용합니다.
-- 모든 플레이어는 HP 20으로 시작하며, 마지막까지 생존하는 것이 목표입니다.
-- '기력(ki)'은 카드를 사용하는 자원이며, 매 턴 2 또는 3씩 회복됩니다. (kiRegen)
-- 손패는 기본 3장으로 시작하며, 매 턴 1장씩 뽑습니다.
-- 상대의 행동에 '반응(reaction)' 타입 카드로 대응할 수 있습니다.
+[창조 규칙]
+- '신'은 스탯을 갖지 않습니다. 오직 이름, 설명, 그리고 1~2개의 '고유 기적'으로만 정의됩니다.
+- '고유 기적'은 MP를 소모하며, 게임의 판도를 뒤집을 만큼 강력하고 독특해야 합니다.
+- 속성은 無(무), 火(화), 水(수), 木(목), 土(토), 光(광), 暗(암) 중 하나를 선택합니다.
 
-[당신의 임무]
-1.  **사용자 프롬프트 해석**: 사용자의 아이디어를 핵심 컨셉으로 삼아 캐릭터를 구체화합니다.
-2.  **밸런스 설계**: 'CP(캐릭터 포인트) 규칙'을 반드시 준수하여 스탯을 분배합니다. HP가 높으면 다른 능력이 낮아져야 합니다.
-3.  **스킬 디자인**: 3개의 고유 스킬을 만듭니다. 각 스킬은 이름, 기력 비용(cost), 효과 설명(text), 그리고 실제 게임 엔진이 이해할 수 있는 DSL 코드로 구성됩니다. 다자간 전투(FFA) 환경을 고려하여, 여러 명의 적 또는 아군에게 영향을 주는 창의적인 효과를 디자인할 수 있습니다.
-4.  **엄격한 JSON 출력**: 어떤 상황에서도 설명, 주석, 코드 블록 라벨 없이 오직 순수한 JSON 객체 하나만 출력해야 합니다.
-
-[출력 계약: JSON 형식]
-- **최상위**: 단 하나의 JSON 객체.
-- **필수 키**: 
-  - \`name\`: (string) 캐릭터 이름.
-  - \`attribute\`: (string) "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
-  - \`hp\`: (int) 20~70 사이.
-  - \`maxKi\`: (int) 5~15 사이.
-  - \`kiRegen\`: (int) 2 또는 3만 가능.
-  - \`skills\`: (배열) 정확히 3개의 스킬 객체를 포함.
-    - 각 스킬: \`{name, cost, text, dsl}\` 형식을 따름.
-- **CP 규칙 (절대 준수)**: \`(hp) + (maxKi * 4) + (kiRegen === 3 ? 20 : 0) === 100\`
-- **DSL 규칙 (스킬 효과 정의)**:
-  - \`op\`: "damage", "shield", "heal", "draw", "discard", "addMarker", "if", "random", "lifesteal" 등 유효한 op 코드.
-  - \`target\`: "caster"(시전자), "enemy"(선택한 적 1명)을 기본으로 사용. 향후 "all_enemies"(모든 적), "all_players"(모든 플레이어), "random_enemy"(무작위 적) 등 광역 타겟도 구상 가능합니다.
-  - \`damage\`, \`lifesteal\`의 \`amount\`는 **최대 20**을 넘을 수 없습니다.
-  - \`random\`: \`{ op:"random", chance: 0.5, then: [...], else: [...] }\` 형식으로 50% 확률 효과를 구현.
-  - \`addMarker\`: 부여할 수 있는 상태 이상. \`name\`은 "취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명" 중에서만 선택.
-
-[나쁜 예시 (절대 금지)]
-- JSON 앞뒤에 설명 붙이기: \`// 생성된 캐릭터입니다.\n{...}\`
-- 코드 블록 사용: \`\`\`json\n{...}\n\`\`\`
-- CP 규칙 위반: \`"hp": 70, "maxKi": 15, "kiRegen": 3\` -> 70 + 60 + 20 = 150 (규칙 위반)
-- 잘못된 DSL: \`{ op: "makeStrong", amount: 999 }\` -> 'makeStrong'은 유효하지 않은 op.
-
-[좋은 예시]
+[JSON 출력 형식]
 {
-  "name": "서리방패 아이기스",
-  "attribute": "water",
-  "hp": 60,
-  "maxKi": 10,
-  "kiRegen": 2,
-  "skills": [
+  "name": "명왕신 하데스",
+  "description": "죽음과 암흑을 다스리는 과묵한 신.",
+  "uniqueMiracles": [
     {
-      "name": "혹한의 일격",
-      "cost": 3,
-      "text": "적 하나에게 6의 피해를 주고 1턴간 '빙결' 표식을 부여합니다.",
-      "dsl": [
-        { "op": "damage", "target": "enemy", "amount": 6 },
-        { "op": "addMarker", "target": "enemy", "name": "빙결", "turns": 1 }
-      ]
-    },
-    {
-      "name": "빙하의 보루",
-      "cost": 2,
-      "text": "자신에게 8의 보호막을 부여합니다.",
-      "dsl": [ { "op": "shield", "target": "caster", "amount": 8 } ]
-    },
-    {
-      "name": "겨울의 송곳니",
-      "cost": 4,
-      "text": "적 하나에게 5의 흡혈 피해를 줍니다. 대상이 '빙결' 상태라면, 추가로 2의 피해를 줍니다.",
-      "dsl": [
-        { "op": "lifesteal", "target": "enemy", "amount": 5 },
-        { "op": "if", "cond": "enemy.has('빙결')", "then":[{ "op": "damage", "target": "enemy", "amount": 2 }] }
-      ]
+      "name": "<어둠>",
+      "cardType": "miracle",
+      "attribute": "暗",
+      "text": "단일 대상에게 5의 암속성 피해를 준다.",
+      "stats": { "mpCost": 5 },
+      "dsl": [{ "op": "damage", "amount": 5, "attribute": "暗", "target": "enemy" }]
     }
   ]
-}`;
-
-    const user = `{ "prompt": "${prompt}", "power": 20 }`;
-    let rawJson = await callGemini(system, user, temperature, apiKey);
-let jsonText = extractFirstJsonObject(rawJson);
-
-try {
-  const charData = sanitizeCharacter(JSON.parse(jsonText));
-  const newCharRef = db.collection("userCharacters").doc();
-  const finalCharacter = {
-    ...charData,
-    id: newCharRef.id,
-    ownerUid: uid,
-    status: "pending",
-    meta: { model: GEMINI_MODEL, temperature: temperature },
-    createdAt: FieldValue.serverTimestamp()
-  };
-  CharacterSchema.parse(finalCharacter);
-  await newCharRef.set(finalCharacter);
-  return { ok: true, character: finalCharacter };
-} catch (e) {
-  console.error("Character generation error:", e, {rawJson});
-  const errorMessage = e.errors?.[0]?.message || "AI가 유효하지 않은 형식의 캐릭터를 생성했습니다.";
-  throw new HttpsError("internal", errorMessage, { raw: rawJson });
 }
 
+[사용 가능한 DSL op 코드]
+- damage: 피해 입히기 (amount, attribute, target)
+- heal: 회복 (amount, target_stat: "hp"|"mp"|"gold", target)
+- apply_disaster: 재앙 부여 (disasterName: "병"|"안개"|"섬광"|"꿈"|"먹구름", target)
+- remove_disaster: 재앙 제거 (target)
+- modify_stat: 스탯 변경 (target_stat, amount, target)
+- draw: 카드 뽑기 (count, target)
+- discard: 카드 버리기 (count, target)
+- reflect_damage: 피해 반사
+- absorb_hp: 흡혈 (amount, target)
+- if: 조건부 (cond, then, else)
+- random: 확률 (chance, then, else)
+
+[특수 속성 규칙]
+- 光(광): 방어 불가 속성
+- 暗(암): 1 이상의 피해를 입으면 즉시 승천(즉사)
+
+[나쁜 예시 (절대 금지)]
+- JSON 앞뒤에 설명 붙이기
+- 코드 블록 사용: \`\`\`json\n{...}\n\`\`\`
+- 유효하지 않은 속성 사용
+- 유효하지 않은 op 코드 사용
+
+출력은 오직 순수한 JSON 객체만 포함해야 합니다.`;
+
+    const user = `{ "prompt": "${prompt}" }`;
+    let rawJson = await callGemini(system, user, temperature, apiKey);
+    let jsonText = extractFirstJsonObject(rawJson);
+
+    try {
+      const shinData = sanitizeShin(JSON.parse(jsonText));
+      const newShinRef = db.collection("shin").doc();
+      const finalShin = {
+        ...shinData,
+        id: newShinRef.id,
+        ownerUid: uid,
+        status: "pending",
+        meta: { model: GEMINI_MODEL, temperature: temperature },
+        createdAt: FieldValue.serverTimestamp()
+      };
+      ShinSchema.parse(finalShin);
+      await newShinRef.set(finalShin);
+      return { ok: true, shin: finalShin };
+    } catch (e) {
+      console.error("Shin generation error:", e, {rawJson});
+      const errorMessage = e.errors?.[0]?.message || "AI가 유효하지 않은 형식의 신을 생성했습니다.";
+      throw new HttpsError("internal", errorMessage, { raw: rawJson });
+    }
 });
 
 
-// --- 카드 생성 함수 ---
-export const genCard = functions
+// --- 성물(Artifact) 생성 함수 ---
+export const genArtifact = functions
   .region("asia-northeast3")
   .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 60 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
     const apiKey = GEMINI_API_KEY.value();
-    const params = GenCardReqSchema.parse(data);
+    const params = GenArtifactReqSchema.parse(data);
 
     const profileRef = db.doc(`profiles/${uid}`);
     await db.runTransaction(async (tx) => {
@@ -384,96 +374,93 @@ export const genCard = functions
       let count = 0;
       if (profileSnap.exists) {
         const profileData = profileSnap.data();
-        if (profileData.lastCardCreationDate === today) {
-          count = profileData.cardCreationCount || 0;
+        if (profileData.lastArtifactCreationDate === today) {
+          count = profileData.artifactCreationCount || 0;
         }
       }
       if (count >= DAILY_CARD_LIMIT) {
-        throw new HttpsError("resource-exhausted", `오늘 카드 생성 제한(${DAILY_CARD_LIMIT}장)을 모두 사용했습니다.`);
+        throw new HttpsError("resource-exhausted", `오늘 성물 생성 제한(${DAILY_CARD_LIMIT}장)을 모두 사용했습니다.`);
       }
       tx.set(profileRef, {
-        lastCardCreationDate: today,
-        cardCreationCount: count + 1
+        lastArtifactCreationDate: today,
+        artifactCreationCount: count + 1
       }, { merge: true });
     });
 
 const system =
-`당신은 천재적인 TCG 카드 게임 디자이너입니다. 사용자의 아이디어를 받아, 게임의 룰과 밸런스를 완벽하게 이해하고 창의적인 카드를 JSON 형식으로 디자인해야 합니다.
+`당신은 태양신에게 성물을 납품하는 천계의 장인입니다. 사용자의 아이디어를 받아, 예언자들이 사용할 '성물'을 JSON으로 디자인하십시오.
 
-[게임 기본 규칙]
-- 이 게임은 2~8명이 함께하는 갓필드 스타일의 다자간 배틀입니다.
-- 모든 플레이어가 제출한 카드를 섞어 만든 '공용 덱'을 사용합니다.
-- 모든 플레이어는 HP 20으로 시작하며, 마지막까지 생존하는 것이 목표입니다.
-- '기력(ki)'은 카드를 사용하는 자원이며, 매 턴 2 또는 3씩 회복됩니다.
-- 손패는 기본 3장으로 시작하며, 매 턴 1장씩 뽑습니다.
-- 상대의 행동에 '반응(reaction)' 타입 카드로 대응할 수 있습니다.
+[제작 규칙]
+1. **카드 타입 선택**: weapon, armor, item, miracle 중 하나를 선택합니다.
+2. **수치 자율성**: attack, defense, mpCost, goldValue 등의 수치는 컨셉에 맞게 **자유롭게 설정**하십시오.
+3. **효과 조합 자율성**: 아래의 op 코드를 **자유롭게 조합**하여 독특한 효과를 만드십시오.
+4. **고정 규칙 준수**: disasterToApply 필드에는 **미리 정의된 재앙 이름**('병', '안개', '섬광', '꿈', '먹구름')만 사용해야 합니다.
 
-[당신의 임무]
-1.  **사용자 프롬프트 해석**: 사용자의 아이디어를 핵심 컨셉으로 삼아 카드를 구체화합니다.
-2.  **밸런스 설계**: 카드의 비용(cost), 희귀도(rarity), 효과(dsl)를 종합적으로 고려하여 균형을 맞춥니다. 비용이 높을수록 강력한 효과를 가져야 합니다. 공용 덱 환경을 고려하여 특정 카드나 속성에 과도하게 의존하지 않는 범용적으로 유용한 카드를 디자인하세요.
-3.  **카드 타입 결정**: 효과에 가장 적합한 타입을 지정합니다. 다자간 전투(FFA) 환경을 고려하여, 여러 명의 적 또는 아군에게 영향을 주는 창의적인 효과를 디자인할 수 있습니다.
-    - \`skill\`, \`spell\`: 일반적인 행동 카드.
-    - \`attachment\`: 특정 대상에게 지속 효과를 부여하는 카드.
-    - \`reaction\`: 상대 턴에 특정 조건 하에 발동하는 방어/대응 카드.
-4.  **엄격한 JSON 출력**: 어떤 상황에서도 설명, 주석, 코드 블록 라벨 없이 오직 순수한 JSON 객체 하나만 출력해야 합니다.
+[사용 가능한 DSL op 코드]
+- damage: 피해 입히기 (amount, attribute, target)
+- heal: 회복 (amount, target_stat: "hp"|"mp"|"gold", target)
+- apply_disaster: 재앙 부여 (disasterName: "병"|"안개"|"섬광"|"꿈"|"먹구름", target)
+- remove_disaster: 재앙 제거 (target)
+- modify_stat: 스탯 변경 (target_stat: "hp"|"mp"|"gold", amount, target)
+- draw: 카드 뽑기 (count, target)
+- discard: 카드 버리기 (count, target)
+- reflect_damage: 피해 반사
+- absorb_hp: 흡혈 (amount, target)
+- if: 조건부 (cond, then, else)
+- random: 확률 (chance, then, else)
+- on_user_death: 사용자 사망 시 (dsl)
+- equip: 장비 장착 (slot: "weapon"|"shield"|"accessory")
+- change_attribute: 속성 변경 (from, to, target)
 
-[출력 계약: JSON 형식]
-- **최상위**: 단 하나의 JSON 객체.
-- **필수 키**:
-  - \`name\`: (string) 카드 이름.
-  - \`type\`: (string) "skill", "spell", "attachment", "reaction" 중 하나.
-  - \`rarity\`: (string) "normal", "rare", "epic", "legend" 중 하나.
-  - \`attribute\`: (string) "fire", "water", "wind", "earth", "light", "dark", "neutral" 중 하나.
-  - \`keywords\`: (string 배열) 카드의 특징을 나타내는 키워드 (예: "광역", "조건부", "드로우"). 최대 4개.
-  - \`cost\`: (int) 0 이상의 정수.
-  - \`cooldownTurns\`: (int) 0 이상의 정수.
-  - \`text\`: (string) 카드 효과를 자연어로 설명. DSL과 내용이 일치해야 함.
-  - \`dsl\`: (배열) 게임 엔진이 이해하는 효과 코드. 1~10개의 op 객체를 포함.
-- **DSL 규칙**:
-  - \`op\`: "damage", "shield", "heal", "draw", "discard", "addMarker", "if", "random", "lifesteal" 등 유효한 op 코드.
-  - \`target\`: "caster"(시전자), "enemy"(선택한 적 1명)을 기본으로 사용. 향후 "all_enemies"(모든 적), "all_players"(모든 플레이어), "random_enemy"(무작위 적) 등 광역 타겟도 구상 가능합니다.
-  - \`damage\`, \`lifesteal\`의 \`amount\`는 **최대 20**을 넘을 수 없습니다.
-  - \`random\`: \`{ op:"random", chance: 0.5, then: [...], else: [...] }\` 형식으로 50% 확률 효과를 구현.
-  - \`addMarker\`: 부여할 수 있는 상태 이상. \`name\`은 "취약", "강화", "독", "재생", "침묵", "도발", "빙결", "속박", "출혈", "실명" 중에서만 선택.
+[속성 시스템]
+- 7대 속성: 無(무), 火(화), 水(수), 木(목), 土(토), 光(광), 暗(암)
+- 상성: 火↔水, 木↔土
+- 光: 방어 불가
+- 暗: 1 이상의 피해 = 즉시 승천
 
-[좋은 예시]
+[JSON 출력 예시]
 {
-  "name": "재빠른 반격",
-  "type": "reaction",
-  "rarity": "rare",
-  "attribute": "neutral",
-  "keywords": ["반응", "드로우"],
-  "cost": 1,
-  "cooldownTurns": 2,
-  "text": "내가 피해를 받을 때, 그 피해를 2 감소시키고 카드 1장을 뽑습니다.",
+  "name": "승천궁",
+  "cardType": "weapon",
+  "attribute": "光",
+  "text": "25% 확률로 1의 광역 피해. 사용자가 승천 시, 75% 확률로 30의 피해를 주는 물귀신 작전을 펼친다.",
+  "stats": { "attack": 1 },
   "dsl": [
-    { "op": "shield", "target": "caster", "amount": 2 },
-    { "op": "draw", "target": "caster", "count": 1 }
+    { "op": "damage", "amount": 1, "attribute": "光", "target": "all_others" },
+    { "op": "random", "chance": 0.25, "then": [{ "op": "damage", "amount": 1, "attribute": "光", "target": "all_others" }] },
+    { "op": "on_user_death", "dsl": [{ "op": "random", "chance": 0.75, "then": [{ "op": "damage", "amount": 30, "target": "all_others" }] }] }
   ]
-}`;
+}
 
+[나쁜 예시 (절대 금지)]
+- JSON 앞뒤에 설명 붙이기
+- 코드 블록 사용: \`\`\`json\n{...}\n\`\`\`
+- 유효하지 않은 disasterName
+- 유효하지 않은 op 코드
+
+출력은 오직 순수한 JSON 객체만 포함해야 합니다.`;
 
     const user = `{ "prompt": "${params.prompt}", "powerCap": ${params.powerCap} }`;
 
     let rawJson = await callGemini(system, user, params.temperature, apiKey);
-let jsonText = extractFirstJsonObject(rawJson);
+    let jsonText = extractFirstJsonObject(rawJson);
 
-let cardData;
-try {
-  cardData = sanitizeCard(JSON.parse(jsonText));
-} catch (e) {
-  console.error("Model response is not valid JSON:", rawJson);
-  throw new HttpsError("internal", "AI 모델이 유효한 JSON을 생성하지 못했습니다.", {raw: rawJson});
-}
+    let artifactData;
+    try {
+      artifactData = sanitizeArtifact(JSON.parse(jsonText));
+    } catch (e) {
+      console.error("Model response is not valid JSON:", rawJson);
+      throw new HttpsError("internal", "AI 모델이 유효한 JSON을 생성하지 못했습니다.", {raw: rawJson});
+    }
 
     try {
-      const newCardRef = db.collection("userCards").doc();
-      const newCardId = newCardRef.id;
-      const score = (cardData.dsl?.length || 1) * 2 + (cardData.cost || 0) * 1.5;
+      const newArtifactRef = db.collection("artifacts").doc();
+      const newArtifactId = newArtifactRef.id;
+      const score = (artifactData.dsl?.length || 1) * 2 + (artifactData.stats?.attack || 0) + (artifactData.stats?.defense || 0);
       
-      const finalCard = {
-        ...cardData,
-        id: newCardId,
+      const finalArtifact = {
+        ...artifactData,
+        id: newArtifactId,
         ownerUid: uid,
         checks: { banned: false, version: 1, validatorScore: score, errors: [] },
         status: "pending",
@@ -481,13 +468,13 @@ try {
         createdAt: FieldValue.serverTimestamp()
       };
       
-      CardSchema.parse(finalCard);
-      await newCardRef.set(finalCard);
-      return { ok: true, card: finalCard };
+      ArtifactSchema.parse(finalArtifact);
+      await newArtifactRef.set(finalArtifact);
+      return { ok: true, artifact: finalArtifact };
 
     } catch (e) {
-      console.warn("Skipping invalid card from model:", cardData, e.issues);
-      const errorMessage = e.errors?.[0]?.message ? `${e.errors[0].path.join('.')} - ${e.errors[0].message}` : "AI가 유효하지 않은 형식의 카드를 생성했습니다.";
+      console.warn("Skipping invalid artifact from model:", artifactData, e.issues);
+      const errorMessage = e.errors?.[0]?.message ? `${e.errors[0].path.join('.')} - ${e.errors[0].message}` : "AI가 유효하지 않은 형식의 성물을 생성했습니다.";
       throw new HttpsError("internal", errorMessage, { raw: rawJson });
     }
 });
@@ -499,6 +486,14 @@ try {
 export const apiPlayCard = functions.region("asia-northeast3").https.onCall(playCard);
 export const apiReact = functions.region("asia-northeast3").https.onCall(react);
 export const apiEndTurn = functions.region("asia-northeast3").https.onCall(endTurn);
+
+// ===================================
+// ===== 하위 호환성 함수 =====
+// ===================================
+// 기존 genCard와 genCharacter 함수는 하위 호환성을 위해 유지됩니다.
+// 새로운 코드에서는 genArtifact와 genShin을 사용하세요.
+export const genCard = genArtifact;
+export const genCharacter = genShin;
 
 
 // ============================================
@@ -615,13 +610,16 @@ export const createRoom = functions
     });
 
 /**
- * 플레이어 준비 및 선택 사항 업데이트 함수
+ * 플레이어 준비 및 선택 사항 업데이트 함수 (GodField)
  */
 const SetPlayerReadySchema = z.object({
     roomId: z.string(),
+    shinId: z.string().optional(),
+    selectedArtifactIds: z.array(z.string()).min(7).max(7).optional(),
+    // 하위 호환성을 위해 유지
     characterId: z.string().optional(),
     selectedCardIds: z.array(z.string()).min(5).max(10).optional(),
-    selectedSkills: z.array(z.string()).length(2).optional(),
+    selectedSkills: z.array(z.string()).optional(),
     ready: z.boolean(),
 });
 
@@ -677,7 +675,7 @@ export const setPlayerReady = functions
     .https.onCall(async (data, context) => {
         if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         const { uid } = context.auth;
-        const { roomId, characterId, selectedCardIds, selectedSkills, ready } = SetPlayerReadySchema.parse(data);
+        const { roomId, shinId, selectedArtifactIds, characterId, selectedCardIds, selectedSkills, ready } = SetPlayerReadySchema.parse(data);
 
         const roomRef = db.doc(`rooms/${roomId}`);
 
@@ -692,12 +690,23 @@ export const setPlayerReady = functions
             const player = roomData.players[playerIndex];
             player.ready = ready;
             if (ready) {
-                if (!characterId || !selectedCardIds || !selectedSkills) {
-                    throw new HttpsError("invalid-argument", "준비 상태를 완료하려면 캐릭터, 카드, 스킬을 모두 선택해야 합니다.");
+                // GodField 모드: shin + artifacts
+                if (shinId && selectedArtifactIds) {
+                    if (selectedArtifactIds.length !== 7) {
+                        throw new HttpsError("invalid-argument", "정확히 7개의 성물을 선택해야 합니다.");
+                    }
+                    player.shinId = shinId;
+                    player.selectedArtifactIds = selectedArtifactIds;
                 }
-                player.characterId = characterId;
-                player.selectedCardIds = selectedCardIds;
-                player.selectedSkills = selectedSkills;
+                // 하위 호환: character + cards
+                else if (characterId && selectedCardIds) {
+                    player.characterId = characterId;
+                    player.selectedCardIds = selectedCardIds;
+                    player.selectedSkills = selectedSkills || [];
+                }
+                else {
+                    throw new HttpsError("invalid-argument", "준비 상태를 완료하려면 신과 성물(또는 캐릭터와 카드)을 모두 선택해야 합니다.");
+                }
             }
 
             tx.update(roomRef, { players: roomData.players });
@@ -707,7 +716,7 @@ export const setPlayerReady = functions
 
 
 /**
- * 게임 시작 함수
+ * 게임 시작 함수 (GodField)
  */
 export const startGame = functions
     .region("asia-northeast3")
@@ -729,46 +738,106 @@ export const startGame = functions
             if (roomData.players.length < 2) throw new HttpsError("failed-precondition", "최소 2명 이상의 플레이어가 필요합니다.");
             if (!roomData.players.every(p => p.ready)) throw new HttpsError("failed-precondition", "모든 플레이어가 준비되지 않았습니다.");
 
-            // 1. 모든 플레이어의 카드와 캐릭터 정보 가져오기
-            const playerUids = roomData.players.map(p => p.uid);
+            // GodField 모드 확인: 첫 번째 플레이어가 shinId를 가지고 있는지 확인
+            const isGodFieldMode = roomData.players[0].shinId !== undefined;
 
-            const cardPromises = roomData.players.map(p => db.collection('userCards').where('ownerUid', '==', p.uid).get());
-            const charPromises = roomData.players.map(p => db.collection('userCharacters').where('ownerUid', '==', p.uid).get());
-            
-            const cardSnaps = await Promise.all(cardPromises);
-            const charSnaps = await Promise.all(charPromises);
-
-            const allCards = cardSnaps.flatMap(snap => snap.docs.map(d => d.data()));
-            const allChars = charSnaps.flatMap(snap => snap.docs.map(d => d.data()));
-            
-            // 2. 공용 덱 생성 및 셔플
+            let matchPlayers = {};
             let commonDeck = [];
-            roomData.players.forEach(p => {
-                const selected = new Set(p.selectedCardIds);
-                commonDeck.push(...allCards.filter(c => selected.has(c.id)));
-            });
-            commonDeck.sort(() => Math.random() - 0.5); // 셔플
 
-            // 3. 매치 플레이어 상태 초기화
-            const matchPlayers = {};
-            roomData.players.forEach(p => {
-                const char = allChars.find(c => c.id === p.characterId);
-                if (!char) throw new HttpsError("not-found", `${p.nickname}의 캐릭터(${p.characterId})를 찾을 수 없습니다.`);
+            if (isGodFieldMode) {
+                // === GodField 모드 ===
+                // 1. 모든 플레이어의 신과 성물 정보 가져오기
+                const shinPromises = roomData.players.map(p => db.doc(`shin/${p.shinId}`).get());
+                const artifactPromises = roomData.players.map(p => {
+                    return db.collection('artifacts').where('ownerUid', '==', p.uid).get();
+                });
                 
-                matchPlayers[p.uid] = {
-                    uid: p.uid,
-                    nickname: p.nickname,
-                    hp: char.hp,
-                    maxHp: char.hp,
-                    ki: 5, // 시작 기력
-                    maxKi: char.maxKi,
-                    kiRegen: char.kiRegen,
-                    hand: commonDeck.splice(0, 3), // 시작 손패 3장
-                    skills: char.skills.filter(s => p.selectedSkills.includes(s.name)),
-                    markers: [],
-                    reactionUsedThisTurn: 0,
-                };
-            });
+                const shinSnaps = await Promise.all(shinPromises);
+                const artifactSnaps = await Promise.all(artifactPromises);
+
+                const shins = shinSnaps.map(snap => snap.data());
+                const allArtifacts = artifactSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+                
+                // 2. 공용 덱 생성 및 셔플 (각 플레이어가 제출한 7장의 성물)
+                roomData.players.forEach(p => {
+                    const selected = new Set(p.selectedArtifactIds);
+                    const playerArtifacts = allArtifacts.filter(a => selected.has(a.id));
+                    playerArtifacts.forEach(artifact => {
+                        commonDeck.push({
+                            instanceId: `${artifact.id}_${Math.random().toString(36).substr(2, 9)}`,
+                            artifactId: artifact.id,
+                            ownerUid: p.uid,
+                            cardType: artifact.cardType,
+                            name: artifact.name,
+                            attribute: artifact.attribute,
+                            text: artifact.text,
+                            stats: artifact.stats || {},
+                            dsl: artifact.dsl,
+                            disasterToApply: artifact.disasterToApply
+                        });
+                    });
+                });
+                commonDeck.sort(() => Math.random() - 0.5); // 셔플
+
+                // 3. 매치 플레이어 상태 초기화 (GodField 스탯)
+                roomData.players.forEach((p, idx) => {
+                    const shin = shins[idx];
+                    if (!shin) throw new HttpsError("not-found", `${p.nickname}의 신(${p.shinId})을 찾을 수 없습니다.`);
+                    
+                    matchPlayers[p.uid] = {
+                        uid: p.uid,
+                        nickname: p.nickname,
+                        hp: 40, // GodField 시작 HP
+                        mp: 10, // GodField 시작 MP
+                        gold: 20, // GodField 시작 Gold
+                        hand: commonDeck.splice(0, 9).map(card => ({...card})), // 시작 손패 9장
+                        miracles: shin.uniqueMiracles.map(m => ({...m})), // 신의 고유 기적
+                        equipment: {
+                            weapon: null,
+                            shield: null,
+                            accessory: null
+                        },
+                        disasters: [] // 재앙 목록
+                    };
+                });
+            } else {
+                // === 하위 호환: 기존 모드 ===
+                const cardPromises = roomData.players.map(p => db.collection('userCards').where('ownerUid', '==', p.uid).get());
+                const charPromises = roomData.players.map(p => db.collection('userCharacters').where('ownerUid', '==', p.uid).get());
+                
+                const cardSnaps = await Promise.all(cardPromises);
+                const charSnaps = await Promise.all(charPromises);
+
+                const allCards = cardSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+                const allChars = charSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+                
+                // 공용 덱 생성
+                roomData.players.forEach(p => {
+                    const selected = new Set(p.selectedCardIds);
+                    commonDeck.push(...allCards.filter(c => selected.has(c.id)));
+                });
+                commonDeck.sort(() => Math.random() - 0.5);
+
+                // 플레이어 상태 초기화
+                roomData.players.forEach(p => {
+                    const char = allChars.find(c => c.id === p.characterId);
+                    if (!char) throw new HttpsError("not-found", `${p.nickname}의 캐릭터(${p.characterId})를 찾을 수 없습니다.`);
+                    
+                    matchPlayers[p.uid] = {
+                        uid: p.uid,
+                        nickname: p.nickname,
+                        hp: char.hp,
+                        maxHp: char.hp,
+                        ki: 5,
+                        maxKi: char.maxKi,
+                        kiRegen: char.kiRegen,
+                        hand: commonDeck.splice(0, 3),
+                        skills: char.skills.filter(s => p.selectedSkills?.includes(s.name)) || [],
+                        markers: [],
+                        reactionUsedThisTurn: 0,
+                    };
+                });
+            }
 
             // 4. 새로운 매치 문서 생성
             const newMatch = {
@@ -784,6 +853,8 @@ export const startGame = functions
                 createdAt: FieldValue.serverTimestamp(),
                 players: matchPlayers,
                 commonDeck,
+                threatInfo: null,
+                isGodFieldMode: isGodFieldMode
             };
             tx.set(matchRef, newMatch);
 
@@ -826,7 +897,7 @@ export const cleanupEmptyRooms = functions.pubsub.schedule('every 60 minutes').o
 
 
 /**
- * 카드 삭제 함수
+ * 카드 삭제 함수 (하위 호환)
  */
 export const deleteCard = functions
     .region("asia-northeast3")
@@ -855,6 +926,72 @@ export const deleteCard = functions
         }
 
         await cardRef.delete();
+
+        return { ok: true };
+    });
+
+/**
+ * 성물 삭제 함수
+ */
+export const deleteArtifact = functions
+    .region("asia-northeast3")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        }
+        const { uid } = context.auth;
+        const { artifactId } = z.object({ artifactId: z.string() }).parse(data);
+
+        const artifactRef = db.doc(`artifacts/${artifactId}`);
+        const artifactSnap = await artifactRef.get();
+
+        if (!artifactSnap.exists) {
+            throw new HttpsError("not-found", "삭제할 성물을 찾을 수 없습니다.");
+        }
+
+        const artifactData = artifactSnap.data();
+        if (artifactData.ownerUid !== uid) {
+            throw new HttpsError("permission-denied", "자신이 생성한 성물만 삭제할 수 있습니다.");
+        }
+        
+        if (artifactData.status !== 'pending' && artifactData.status !== 'approved') {
+             throw new HttpsError("failed-precondition", "현재 상태에서는 성물을 삭제할 수 없습니다.");
+        }
+
+        await artifactRef.delete();
+
+        return { ok: true };
+    });
+
+/**
+ * 신 삭제 함수
+ */
+export const deleteShin = functions
+    .region("asia-northeast3")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        }
+        const { uid } = context.auth;
+        const { shinId } = z.object({ shinId: z.string() }).parse(data);
+
+        const shinRef = db.doc(`shin/${shinId}`);
+        const shinSnap = await shinRef.get();
+
+        if (!shinSnap.exists) {
+            throw new HttpsError("not-found", "삭제할 신을 찾을 수 없습니다.");
+        }
+
+        const shinData = shinSnap.data();
+        if (shinData.ownerUid !== uid) {
+            throw new HttpsError("permission-denied", "자신이 생성한 신만 삭제할 수 있습니다.");
+        }
+        
+        if (shinData.status !== 'pending' && shinData.status !== 'approved') {
+             throw new HttpsError("failed-precondition", "현재 상태에서는 신을 삭제할 수 없습니다.");
+        }
+
+        await shinRef.delete();
 
         return { ok: true };
     });
