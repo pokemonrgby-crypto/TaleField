@@ -9,6 +9,33 @@ const myCharsGridEl = $("#my-chars-grid");
 const myCharsStatusEl = $("#my-chars-status");
 const refreshBtn = $("#btn-refresh-my-chars");
 
+function renderMyShinTile(shin) {
+    const el = document.createElement("div");
+    el.className = "card";
+    
+    const miraclesHTML = shin.uniqueMiracles.map(m => `
+        <div style="border-top: 1px solid var(--line-main); padding-top: 8px; margin-top: 8px;">
+            <strong>${m.name} (MP: ${m.stats.mpCost})</strong>
+            <p style="margin: 4px 0 0; font-size: 0.9rem; color: var(--ink-dim);">${m.text}</p>
+            <div class="muted" style="font-size:0.85rem;">속성: ${m.attribute}</div>
+        </div>
+    `).join('');
+
+    el.innerHTML = `
+      <div class="card__title">
+        <span>${shin.name}</span>
+        <span class="muted">신(Shin)</span>
+      </div>
+      <div class="card__body">
+        <p style="margin: 4px 0; font-size: 0.9rem; color: var(--ink-dim);">${shin.description}</p>
+        <div class="muted" style="font-size:0.85rem; margin-top: 4px;">Status: ${shin.status}</div>
+        <div style="margin-top: 12px; font-weight: 600;">고유 기적:</div>
+        ${miraclesHTML}
+      </div>
+    `;
+    return el;
+}
+
 function renderMyCharacterTile(char) {
     const el = document.createElement("div");
     el.className = "card";
@@ -32,6 +59,40 @@ function renderMyCharacterTile(char) {
       </div>
     `;
     return el;
+}
+
+export async function loadMyShin() {
+    const user = getAuth().currentUser;
+    if (!user) {
+        myCharsStatusEl.textContent = "신(Shin)을 보려면 로그인이 필요합니다.";
+        myCharsGridEl.innerHTML = "";
+        return;
+    }
+
+    try {
+        myCharsStatusEl.textContent = "내 신(Shin)을 불러오는 중...";
+        const q = query(
+            collection(db, "shin"), 
+            where("ownerUid", "==", user.uid),
+            orderBy("createdAt", "desc")
+        );
+        const snap = await getDocs(q);
+
+        if (snap.empty) {
+            myCharsStatusEl.textContent = "아직 생성한 신이 없습니다. '캐릭터 생성' 탭에서 만들어보세요!";
+            myCharsGridEl.innerHTML = "";
+            return;
+        }
+
+        const shins = snap.docs.map(d => d.data());
+        myCharsGridEl.innerHTML = "";
+        shins.forEach(shin => myCharsGridEl.appendChild(renderMyShinTile(shin)));
+        myCharsStatusEl.textContent = `총 ${shins.length}명의 신을 보유하고 있습니다.`;
+
+    } catch (e) {
+        console.error("Error loading my shin:", e);
+        myCharsStatusEl.textContent = "신을 불러오는 중 오류가 발생했습니다.";
+    }
 }
 
 export async function loadMyCharacters() {
@@ -69,12 +130,12 @@ export async function loadMyCharacters() {
 }
 
 export function initMyCharactersTab() {
-    refreshBtn.addEventListener("click", loadMyCharacters);
+    refreshBtn.addEventListener("click", loadMyShin);
     
     const myCharsTabBtn = document.querySelector('button[data-tab="view-my-characters"]');
     myCharsTabBtn.addEventListener('click', () => {
         if (myCharsGridEl.children.length === 0) {
-            loadMyCharacters();
+            loadMyShin();
         }
     });
 }

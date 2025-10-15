@@ -71,17 +71,26 @@ export async function claimNickname(uid, nickname) {
 // ---------- Functions ----------
 export const fx = getFunctions(app, "asia-northeast3");
 
-// 기존 함수들
-export async function callGenCard(params) {
-  const fn = httpsCallable(fx, "genCard");
+// GodField 함수들
+export async function callGenShin(params) {
+  const fn = httpsCallable(fx, "genShin");
   const res = await fn(params);
   return res.data;
 }
 
-export async function callGenCharacter(params) {
-  const fn = httpsCallable(fx, "genCharacter");
+export async function callGenArtifact(params) {
+  const fn = httpsCallable(fx, "genArtifact");
   const res = await fn(params);
   return res.data;
+}
+
+// 하위 호환성 유지
+export async function callGenCard(params) {
+  return callGenArtifact(params);
+}
+
+export async function callGenCharacter(params) {
+  return callGenShin(params);
 }
 
 // ANCHOR: public/js/firebase.js (new functions)
@@ -116,10 +125,21 @@ export async function callSetPlayerReady(params) {
     return res.data;
 }
 
-export async function callDeleteCard(params) {
-    const fn = httpsCallable(fx, "deleteCard");
+export async function callDeleteArtifact(params) {
+    const fn = httpsCallable(fx, "deleteArtifact");
     const res = await fn(params);
     return res.data;
+}
+
+export async function callDeleteShin(params) {
+    const fn = httpsCallable(fx, "deleteShin");
+    const res = await fn(params);
+    return res.data;
+}
+
+// 하위 호환성
+export async function callDeleteCard(params) {
+    return callDeleteArtifact(params);
 }
 
 export async function callPlayCard(params) {
