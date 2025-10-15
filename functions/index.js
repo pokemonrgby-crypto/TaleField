@@ -487,6 +487,307 @@ export const apiPlayCard = functions.region("asia-northeast3").https.onCall(play
 export const apiReact = functions.region("asia-northeast3").https.onCall(react);
 export const apiEndTurn = functions.region("asia-northeast3").https.onCall(endTurn);
 
+/**
+ * GodField 핵심 게임 플레이 액션 처리 함수
+ * ATTACK, DEFEND, PRAY 등의 행동을 처리합니다.
+ */
+export const playerAction = functions
+    .region("asia-northeast3")
+    .https.onCall(async (data, context) => {
+        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = context.auth;
+        
+        const { matchId, actionType, payload } = z.object({
+            matchId: z.string(),
+            actionType: z.enum(["ATTACK", "DEFEND", "PRAY", "USE_ARTIFACT", "TRADE", "DISCARD"]),
+            payload: z.any().optional()
+        }).parse(data);
+
+        const matchRef = db.doc(`matches/${matchId}`);
+
+        return await db.runTransaction(async (tx) => {
+            const matchSnap = await tx.get(matchRef);
+            if (!matchSnap.exists) throw new HttpsError("not-found", "매치를 찾을 수 없습니다.");
+
+            const matchData = matchSnap.data();
+            const player = matchData.players[uid];
+            if (!player) throw new HttpsError("not-found", "플레이어를 찾을 수 없습니다.");
+
+            // GodField 모드 확인
+            if (!matchData.isGodFieldMode) {
+                throw new HttpsError("failed-precondition", "이 액션은 GodField 모드에서만 사용 가능합니다.");
+            }
+
+            // 액션 타입별 처리
+            switch (actionType) {
+                case "ATTACK":
+                    return handleAttack(tx, matchRef, matchData, uid, payload);
+                case "DEFEND":
+                    return handleDefend(tx, matchRef, matchData, uid, payload);
+                case "PRAY":
+                    return handlePray(tx, matchRef, matchData, uid, payload);
+                default:
+                    throw new HttpsError("unimplemented", `${actionType} 액션은 아직 구현되지 않았습니다.`);
+            }
+        });
+    });
+
+/**
+ * ATTACK 액션 처리: 무기로 공격
+ */
+function handleAttack(tx, matchRef, matchData, uid, payload) {
+    const { weaponCardId, targetUid } = z.object({
+        weaponCardId: z.string(),
+        targetUid: z.string()
+    }).parse(payload);
+
+    const player = matchData.players[uid];
+    const target = matchData.players[targetUid];
+
+    // 검증: 현재 플레이어의 턴인지 확인
+    if (matchData.currentPlayerUid !== uid) {
+        throw new HttpsError("failed-precondition", "당신의 턴이 아닙니다.");
+    }
+
+    // 검증: 메인 페이즈인지 확인
+    if (matchData.phase !== 'main') {
+        throw new HttpsError("failed-precondition", "메인 페이즈에서만 공격할 수 있습니다.");
+    }
+
+    // 검증: 타겟이 존재하는지 확인
+    if (!target) {
+        throw new HttpsError("not-found", "공격 대상을 찾을 수 없습니다.");
+    }
+
+    // 검증: 무기 카드가 손패에 있는지 확인
+    const weaponIndex = player.hand.findIndex(c => (c.id || c.instanceId) === weaponCardId);
+    if (weaponIndex === -1) {
+        throw new HttpsError("not-found", "무기 카드가 손에 없습니다.");
+    }
+
+    const weaponCard = player.hand[weaponIndex];
+    
+    // 검증: 카드 타입이 무기인지 확인
+    if (weaponCard.cardType !== 'weapon') {
+        throw new HttpsError("invalid-argument", "무기 카드만 공격에 사용할 수 있습니다.");
+    }
+
+    // 장비 슬롯에 무기 장착
+    player.equipment = player.equipment || { weapon: null, shield: null, accessory: null };
+    player.equipment.weapon = weaponCard;
+    
+    // 손패에서 제거
+    player.hand.splice(weaponIndex, 1);
+
+    // 공격력 확인
+    const attackPower = weaponCard.stats?.attack || 0;
+
+    // phase를 'threat'로 변경하고 threatInfo 설정
+    const updateData = {
+        phase: 'threat',
+        threatInfo: {
+            attackerUid: uid,
+            attackerName: player.nickname,
+            targetUid: targetUid,
+            targetName: target.nickname,
+            weaponCard: weaponCard,
+            attackPower: attackPower,
+            attribute: weaponCard.attribute
+        },
+        [`players.${uid}`]: player
+    };
+
+    tx.update(matchRef, updateData);
+
+    return { 
+        ok: true, 
+        message: `${player.nickname}이(가) ${weaponCard.name}(으)로 ${target.nickname}을(를) 공격합니다!` 
+    };
+}
+
+/**
+ * DEFEND 액션 처리: 방어구로 방어
+ */
+function handleDefend(tx, matchRef, matchData, uid, payload) {
+    const { armorCardIds } = z.object({
+        armorCardIds: z.array(z.string())
+    }).parse(payload);
+
+    const player = matchData.players[uid];
+
+    // 검증: 현재 phase가 'threat'인지 확인
+    if (matchData.phase !== 'threat') {
+        throw new HttpsError("failed-precondition", "위협 페이즈에서만 방어할 수 있습니다.");
+    }
+
+    // 검증: 요청자가 공격 대상인지 확인
+    if (matchData.threatInfo?.targetUid !== uid) {
+        throw new HttpsError("failed-precondition", "당신이 공격 대상이 아닙니다.");
+    }
+
+    // 방어구 카드들 확인 및 수집
+    const armorCards = [];
+    let totalDefense = 0;
+    const defenseAttributes = new Set();
+
+    for (const cardId of armorCardIds) {
+        const cardIndex = player.hand.findIndex(c => (c.id || c.instanceId) === cardId);
+        if (cardIndex === -1) {
+            throw new HttpsError("not-found", `방어구 카드 ${cardId}가 손에 없습니다.`);
+        }
+
+        const card = player.hand[cardIndex];
+        if (card.cardType !== 'armor') {
+            throw new HttpsError("invalid-argument", "방어구 카드만 방어에 사용할 수 있습니다.");
+        }
+
+        armorCards.push({ card, index: cardIndex });
+        totalDefense += card.stats?.defense || 0;
+        defenseAttributes.add(card.attribute);
+    }
+
+    // 공격 정보 가져오기
+    const { attackPower, attribute: attackAttribute, weaponCard } = matchData.threatInfo;
+
+    // 속성 상성 계산
+    let finalDamage = attackPower;
+    
+    // 광속성: 방어 불가 (방어력 무시)
+    if (attackAttribute === '光') {
+        finalDamage = attackPower;
+    } 
+    // 암속성: 1 이상의 피해 = 즉사
+    else if (attackAttribute === '暗' && attackPower >= 1) {
+        // 방어 성공 여부 확인 (완전 방어 가능한 경우에만 생존)
+        if (totalDefense >= attackPower && defenseAttributes.has('暗')) {
+            finalDamage = 0; // 암속성 방어구로 완전 방어
+        } else {
+            // 즉사
+            finalDamage = player.hp; // 현재 HP만큼 피해 = 즉사
+        }
+    }
+    // 일반 속성: 방어력 적용 + 상성 체크
+    else {
+        finalDamage = Math.max(0, attackPower - totalDefense);
+        
+        // 상성: 火↔水, 木↔土
+        const weaknesses = {
+            '火': '水',
+            '水': '火',
+            '木': '土',
+            '土': '木'
+        };
+        
+        // 방어자가 공격자의 약점 속성을 가지고 있으면 피해 감소
+        if (weaknesses[attackAttribute] && defenseAttributes.has(weaknesses[attackAttribute])) {
+            finalDamage = Math.floor(finalDamage * 0.5); // 50% 감소
+        }
+        // 공격자가 방어자의 약점을 찌르면 피해 증가
+        else if (Object.entries(weaknesses).some(([weak, strong]) => 
+            attackAttribute === strong && defenseAttributes.has(weak)
+        )) {
+            finalDamage = Math.ceil(finalDamage * 1.5); // 50% 증가
+        }
+    }
+
+    // HP 차감
+    player.hp = Math.max(0, player.hp - finalDamage);
+
+    // 방어에 사용한 카드들을 손패에서 제거 (역순으로 제거)
+    armorCards.sort((a, b) => b.index - a.index);
+    for (const { index, card } of armorCards) {
+        player.hand.splice(index, 1);
+        // 방어구를 장비 슬롯에 장착할 수도 있음 (첫 번째 방어구만)
+        if (!player.equipment.shield && card === armorCards[0].card) {
+            player.equipment.shield = card;
+        }
+    }
+
+    // phase를 다시 'main'으로 되돌리고 threatInfo 초기화
+    const updateData = {
+        phase: 'main',
+        threatInfo: null,
+        [`players.${uid}`]: player
+    };
+
+    tx.update(matchRef, updateData);
+
+    return { 
+        ok: true, 
+        message: `${player.nickname}이(가) ${finalDamage}의 피해를 받았습니다. (남은 HP: ${player.hp})` 
+    };
+}
+
+/**
+ * PRAY 액션 처리: 기도 (손패에 무기가 없을 때만 가능)
+ */
+function handlePray(tx, matchRef, matchData, uid, payload) {
+    const player = matchData.players[uid];
+
+    // 검증: 현재 플레이어의 턴인지 확인
+    if (matchData.currentPlayerUid !== uid) {
+        throw new HttpsError("failed-precondition", "당신의 턴이 아닙니다.");
+    }
+
+    // 검증: 메인 페이즈인지 확인
+    if (matchData.phase !== 'main') {
+        throw new HttpsError("failed-precondition", "메인 페이즈에서만 기도할 수 있습니다.");
+    }
+
+    // 검증: 손패에 무기가 없는지 확인
+    const hasWeapon = player.hand.some(c => c.cardType === 'weapon');
+    if (hasWeapon) {
+        throw new HttpsError("failed-precondition", "손패에 무기가 있을 때는 기도할 수 없습니다.");
+    }
+
+    // 검증: 손패가 최소 1장 이상 있는지 확인
+    if (player.hand.length < 1) {
+        throw new HttpsError("failed-precondition", "버릴 카드가 없습니다.");
+    }
+
+    // 손패 1장 버리기 (첫 번째 카드)
+    const discardedCard = player.hand.shift();
+    
+    // 공용 덱에서 2장 뽑기
+    const drawnCards = [];
+    if (matchData.commonDeck && matchData.commonDeck.length > 0) {
+        drawnCards.push(matchData.commonDeck.pop());
+    }
+    if (matchData.commonDeck && matchData.commonDeck.length > 0) {
+        drawnCards.push(matchData.commonDeck.pop());
+    }
+    
+    player.hand.push(...drawnCards);
+
+    // 턴 종료: 다음 플레이어로 넘기기
+    const playerUids = Object.keys(matchData.players);
+    const currentIndex = playerUids.indexOf(uid);
+    const nextPlayerUid = playerUids[(currentIndex + 1) % playerUids.length];
+    const nextPlayer = matchData.players[nextPlayerUid];
+
+    // 다음 플레이어 드로우 (commonDeck에서 1장)
+    if (matchData.commonDeck && matchData.commonDeck.length > 0) {
+        nextPlayer.hand.push(matchData.commonDeck.pop());
+    }
+    nextPlayer.reactionUsedThisTurn = 0;
+
+    const updateData = {
+        currentPlayerUid: nextPlayerUid,
+        turn: matchData.turn + 1,
+        phase: 'main',
+        [`players.${uid}`]: player,
+        [`players.${nextPlayerUid}`]: nextPlayer,
+        commonDeck: matchData.commonDeck
+    };
+
+    tx.update(matchRef, updateData);
+
+    return { 
+        ok: true, 
+        message: `${player.nickname}이(가) 기도하여 ${drawnCards.length}장의 카드를 얻었습니다.` 
+    };
+}
+
 // ===================================
 // ===== 하위 호환성 함수 =====
 // ===================================

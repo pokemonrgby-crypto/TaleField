@@ -1,6 +1,6 @@
 // public/js/tabs/match.js
 import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { auth, db, callPlayCard, callEndTurn } from "../firebase.js";
+import { auth, db, callPlayCard, callEndTurn, callPlayerAction } from "../firebase.js";
 import { state, on } from "../state.js";
 
 const $ = (q) => document.querySelector(q);
@@ -27,11 +27,20 @@ const endTurnBtn = $("#btn-end-turn");
 const selectedCardNameEl = $("#selected-card-name");
 const selectedTargetNameEl = $("#selected-target-name");
 
+// GodField Action Buttons
+const godFieldActionsEl = $("#godfield-actions");
+const attackBtn = $("#btn-attack");
+const defendBtn = $("#btn-defend");
+const prayBtn = $("#btn-pray");
+
 let currentMatchId = null;
 let unsubscribeMatch = null;
 
 let selectedCardId = null;
 let selectedTargetUid = null;
+
+// Prevent duplicate calls
+let isActionInProgress = false;
 
 function renderCardDetails(card) {
     if (!card) {
@@ -70,16 +79,39 @@ function renderCardDetails(card) {
 
 function updateActionPanel() {
     const myTurn = state.match?.currentPlayerUid === auth.currentUser?.uid;
-    endTurnBtn.disabled = !myTurn;
-    
+    const isGodFieldMode = state.match?.isGodFieldMode;
+    const phase = state.match?.phase;
     const myData = state.match?.players[auth.currentUser?.uid];
-    const card = myData?.hand.find(c => c.id === selectedCardId);
+    
+    endTurnBtn.disabled = !myTurn || isActionInProgress;
+    
+    const card = myData?.hand.find(c => (c.id || c.instanceId) === selectedCardId);
     selectedCardNameEl.textContent = card?.name || "없음";
     
     const target = state.match?.players[selectedTargetUid];
     selectedTargetNameEl.textContent = target?.nickname || "없음";
 
-    playCardBtn.disabled = !myTurn || !card || !target;
+    playCardBtn.disabled = !myTurn || !card || !target || isActionInProgress;
+    
+    // GodField 액션 패널 표시/숨김
+    if (isGodFieldMode && godFieldActionsEl) {
+        godFieldActionsEl.style.display = 'block';
+        
+        // ATTACK 버튼: 내 턴, 메인 페이즈, 무기 카드 선택, 대상 선택
+        const isWeapon = card?.cardType === 'weapon';
+        attackBtn.disabled = !myTurn || phase !== 'main' || !isWeapon || !selectedTargetUid || isActionInProgress;
+        
+        // DEFEND 버튼: threat 페이즈, 내가 공격 대상, 방어구 카드 선택
+        const isArmor = card?.cardType === 'armor';
+        const amUnderAttack = phase === 'threat' && state.match?.threatInfo?.targetUid === auth.currentUser?.uid;
+        defendBtn.disabled = !amUnderAttack || !isArmor || isActionInProgress;
+        
+        // PRAY 버튼: 내 턴, 메인 페이즈, 손패에 무기 없음
+        const hasWeaponInHand = myData?.hand.some(c => c.cardType === 'weapon');
+        prayBtn.disabled = !myTurn || phase !== 'main' || hasWeaponInHand || isActionInProgress;
+    } else if (godFieldActionsEl) {
+        godFieldActionsEl.style.display = 'none';
+    }
 }
 
 function selectCard(cardId) {
@@ -264,13 +296,128 @@ function updateMatchView(matchData) {
         renderMyHand(myData.hand);
     }
 
-    logEl.innerHTML = (matchData.logs || [])
-        .slice(-50) // 최근 50개 로그만 표시
-        .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
-        .join('') || '<div class="muted">게임 로그가 여기에 표시됩니다.</div>';
+    // Threat phase 시각적 표시
+    const logPanel = document.getElementById('match-log-panel');
+    if (matchData.phase === 'threat' && matchData.threatInfo) {
+        const threatMsg = `⚠️ ${matchData.threatInfo.attackerName}이(가) ${matchData.threatInfo.weaponCard.name}(으)로 ${matchData.threatInfo.targetName}을(를) 공격! (위력: ${matchData.threatInfo.attackPower}, 속성: ${matchData.threatInfo.attribute})`;
+        logEl.innerHTML = (matchData.logs || [])
+            .slice(-50)
+            .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
+            .join('') + `<div style="color: var(--danger); font-weight: bold; background: rgba(255,82,82,0.1); padding: 8px; border-radius: 4px; margin-top: 8px;">${threatMsg}</div>`;
+        if (logPanel) logPanel.setAttribute('data-phase', 'threat');
+    } else {
+        logEl.innerHTML = (matchData.logs || [])
+            .slice(-50) // 최근 50개 로그만 표시
+            .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
+            .join('') || '<div class="muted">게임 로그가 여기에 표시됩니다.</div>';
+        if (logPanel) logPanel.removeAttribute('data-phase');
+    }
     logEl.scrollTop = logEl.scrollHeight;
 
     updateActionPanel();
+}
+
+// GodField Action Handlers
+async function handleAttack() {
+    if (isActionInProgress || attackBtn.disabled) return;
+    if (!selectedCardId) {
+        alert("공격에 사용할 무기 카드를 선택해주세요.");
+        return;
+    }
+    if (!selectedTargetUid) {
+        alert("공격할 대상을 선택해주세요.");
+        return;
+    }
+    
+    isActionInProgress = true;
+    disableAllActionButtons();
+    
+    try {
+        const result = await callPlayerAction({
+            matchId: currentMatchId,
+            actionType: "ATTACK",
+            payload: {
+                weaponCardId: selectedCardId,
+                targetUid: selectedTargetUid
+            }
+        });
+        alert(result.message || "공격 성공!");
+        selectCard(null);
+        selectTarget(null);
+    } catch (e) {
+        alert(`공격 실패: ${e.message}`);
+    } finally {
+        isActionInProgress = false;
+        updateActionPanel();
+    }
+}
+
+async function handleDefend() {
+    if (isActionInProgress || defendBtn.disabled) return;
+    
+    // 선택된 카드들 (방어구) 수집
+    const armorCardIds = [];
+    if (selectedCardId) {
+        armorCardIds.push(selectedCardId);
+    }
+    
+    if (armorCardIds.length === 0) {
+        alert("방어에 사용할 방어구 카드를 선택해주세요.");
+        return;
+    }
+    
+    isActionInProgress = true;
+    disableAllActionButtons();
+    
+    try {
+        const result = await callPlayerAction({
+            matchId: currentMatchId,
+            actionType: "DEFEND",
+            payload: {
+                armorCardIds: armorCardIds
+            }
+        });
+        alert(result.message || "방어 성공!");
+        selectCard(null);
+    } catch (e) {
+        alert(`방어 실패: ${e.message}`);
+    } finally {
+        isActionInProgress = false;
+        updateActionPanel();
+    }
+}
+
+async function handlePray() {
+    if (isActionInProgress || prayBtn.disabled) return;
+    
+    if (!confirm("기도를 사용하면 손패 1장을 버리고 2장을 뽑은 후 턴이 종료됩니다. 계속하시겠습니까?")) {
+        return;
+    }
+    
+    isActionInProgress = true;
+    disableAllActionButtons();
+    
+    try {
+        const result = await callPlayerAction({
+            matchId: currentMatchId,
+            actionType: "PRAY",
+            payload: {}
+        });
+        alert(result.message || "기도 성공!");
+    } catch (e) {
+        alert(`기도 실패: ${e.message}`);
+    } finally {
+        isActionInProgress = false;
+        updateActionPanel();
+    }
+}
+
+function disableAllActionButtons() {
+    if (attackBtn) attackBtn.disabled = true;
+    if (defendBtn) defendBtn.disabled = true;
+    if (prayBtn) prayBtn.disabled = true;
+    if (playCardBtn) playCardBtn.disabled = true;
+    if (endTurnBtn) endTurnBtn.disabled = true;
 }
 
 async function handlePlayCard() {
@@ -334,4 +481,9 @@ export function setMatchId(matchId) {
 export function initMatchTab() {
     playCardBtn.addEventListener('click', handlePlayCard);
     endTurnBtn.addEventListener('click', handleEndTurn);
+    
+    // GodField action buttons
+    if (attackBtn) attackBtn.addEventListener('click', handleAttack);
+    if (defendBtn) defendBtn.addEventListener('click', handleDefend);
+    if (prayBtn) prayBtn.addEventListener('click', handlePray);
 }
