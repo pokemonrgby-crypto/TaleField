@@ -125,11 +125,10 @@ function updateMatchView(matchData) {
     
     state.match = matchData;
 
+    // 모든 플레이어 표시 (갓필드 스타일: 나 자신 포함)
     playerListEl.innerHTML = "";
     Object.values(matchData.players).forEach(p => {
-        if (p.uid !== auth.currentUser?.uid) { // 나를 제외한 다른 플레이어
-            playerListEl.appendChild(renderPlayerState(p));
-        }
+        playerListEl.appendChild(renderPlayerState(p));
     });
 
     const myData = matchData.players[auth.currentUser?.uid];
