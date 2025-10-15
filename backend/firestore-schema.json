@@ -8,102 +8,158 @@
       }
     },
 
+    "shin": {
+      "doc": {
+        "id": "string",
+        "ownerUid": "string",
+        "name": "string",
+        "description": "string",
+        "uniqueMiracles": [
+          {
+            "name": "string",
+            "cardType": "miracle",
+            "attribute": "無|火|水|木|土|光|暗",
+            "text": "string",
+            "stats": {
+              "mpCost": "number"
+            },
+            "dsl": "array"
+          }
+        ],
+        "createdAt": "timestamp",
+        "status": "pending|approved|blocked"
+      }
+    },
+
+    "artifacts": {
+      "doc": {
+        "id": "string",
+        "ownerUid": "string",
+        "name": "string",
+        "cardType": "weapon|armor|item|miracle",
+        "attribute": "無|火|水|木|土|光|暗",
+        "text": "string",
+        "stats": {
+          "attack": "number (optional)",
+          "defense": "number (optional)",
+          "durability": "number (optional)",
+          "mpCost": "number (optional)",
+          "goldValue": "number (optional)"
+        },
+        "disasterToApply": "string (optional) - 병|안개|섬광|꿈|먹구름",
+        "dsl": [
+          {
+            "op": "string",
+            "...": "various fields depending on op"
+          }
+        ],
+        "checks": {
+          "banned": "boolean",
+          "version": "number",
+          "validatorScore": "number",
+          "errors": ["string"]
+        },
+        "status": "pending|approved|blocked",
+        "createdAt": "timestamp"
+      }
+    },
+
     "rooms": {
       "doc": {
         "title": "string",
         "hostUid": "string",
+        "hostNickname": "string",
         "status": "waiting|ready|playing|ended",
-        "maxPlayers": 8,
-        "rules": {
-          "minPlayers": 3,
-          "handStart": 3,
-          "handMax": 5,
-          "kiStart": 0,
-          "kiRegen": 2,
-          "kiMax": 10,
-          "reactionLimitPerTurn": 2
-        },
-        "createdAt": "timestamp",
-        "poolSeed": "number"
-      },
-      "subcollections": {
-        "players": {
-          "doc": {
+        "maxPlayers": "number (2-8)",
+        "players": [
+          {
             "uid": "string",
             "nickname": "string",
-            "characterId": "string",
-            "selectedCardIds": [
-              "string"
-            ],
-            "ready": "boolean"
+            "isHost": "boolean",
+            "ready": "boolean",
+            "shinId": "string (optional)",
+            "selectedArtifactIds": ["string (7 items)"],
+            "selectedSkills": ["string (deprecated)"]
           }
-        }
+        ],
+        "createdAt": "timestamp"
       }
     },
+
     "matches": {
       "doc": {
         "roomId": "string",
         "status": "playing|finished",
-        "turn": 1,
+        "turn": "number",
         "currentPlayerUid": "string",
-        "phase": "main|reaction|resolve|end",
-        "stack": [
-          "object"
-        ],
-        "deckCount": 0,
-        "discardCount": 0,
-        "logs": [
-          "object"
-        ],
-        "seed": 123456,
-        "createdAt": "timestamp"
-      },
-      "subcollections": {
+        "phase": "main|threat|trade|resolve",
         "players": {
-          "doc": {
-            "uid": "string",
-            "hp": 20,
-            "maxKi": 10,
-            "ki": 0,
+          "uid": {
+            "nickname": "string",
+            "hp": "number (0-99, start: 40)",
+            "mp": "number (0-99, start: 10)",
+            "gold": "number (0-99, start: 20)",
             "hand": [
-              "string"
+              {
+                "instanceId": "string",
+                "artifactId": "string",
+                "cardType": "weapon|armor|item|miracle",
+                "name": "string",
+                "attribute": "string",
+                "stats": "object",
+                "dsl": "array"
+              }
             ],
-            "shield": 0,
-            "flags": {
-              "string": "boolean"
+            "miracles": [
+              {
+                "name": "string",
+                "cardType": "miracle",
+                "mpCost": "number",
+                "dsl": "array"
+              }
+            ],
+            "equipment": {
+              "weapon": "Card | null",
+              "shield": "Card | null",
+              "accessory": "Card | null"
             },
-            "cooldowns": {
-              "cardName": 0
-            },
-            "reactionUsed": 0
+            "disasters": [
+              {
+                "name": "string (병|안개|섬광|꿈|먹구름)",
+                "level": "number (for 병: 1=감기, 2=열병, 3=지옥병, 4=천국병)"
+              }
+            ]
           }
-        }
-      }
-    },
-    "userCards": {
-      "doc": {
-        "ownerUid": "string",
-        "name": "string",
-        "type": "공격|방어|회복|보조|지속|반응|장착",
-        "rarity": "일반|희귀|서사",
-        "text": "string",
-        "target": "자신|적1|전원|아군전체",
-        "numbers": "object",
-        "keywords": [
-          "string"
-        ],
-        "cost": 0,
-        "cooldownTurns": 0,
-        "dsl": "object",
-        "checks": {
-          "banned": false,
-          "version": 1,
-          "validatorScore": 0,
-          "errors": [
-            "string"
-          ]
         },
-        "status": "approved|blocked|pending"
+        "commonDeck": [
+          {
+            "instanceId": "string",
+            "artifactId": "string",
+            "ownerUid": "string",
+            "cardType": "weapon|armor|item|miracle",
+            "name": "string",
+            "attribute": "string",
+            "stats": "object",
+            "dsl": "array"
+          }
+        ],
+        "discardPile": ["Card"],
+        "threatInfo": {
+          "attackerUid": "string",
+          "targetUid": "string",
+          "attackValue": "number",
+          "attribute": "string",
+          "weaponCard": "Card"
+        },
+        "logs": [
+          {
+            "turn": "number",
+            "action": "string",
+            "details": "string"
+          }
+        ],
+        "suddenDeathTurn": "number (optional)",
+        "createdAt": "timestamp"
       }
     }
   }
