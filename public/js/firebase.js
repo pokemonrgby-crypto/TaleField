@@ -159,3 +159,9 @@ export async function callEndTurn(params) {
     const res = await fn(params);
     return res.data;
 }
+
+export async function callPlayerAction(params) {
+    const fn = httpsCallable(fx, "playerAction");
+    const res = await fn(params);
+    return res.data;
+}
