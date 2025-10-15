@@ -296,10 +296,22 @@ function updateMatchView(matchData) {
         renderMyHand(myData.hand);
     }
 
-    logEl.innerHTML = (matchData.logs || [])
-        .slice(-50) // 최근 50개 로그만 표시
-        .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
-        .join('') || '<div class="muted">게임 로그가 여기에 표시됩니다.</div>';
+    // Threat phase 시각적 표시
+    const logPanel = document.getElementById('match-log-panel');
+    if (matchData.phase === 'threat' && matchData.threatInfo) {
+        const threatMsg = `⚠️ ${matchData.threatInfo.attackerName}이(가) ${matchData.threatInfo.weaponCard.name}(으)로 ${matchData.threatInfo.targetName}을(를) 공격! (위력: ${matchData.threatInfo.attackPower}, 속성: ${matchData.threatInfo.attribute})`;
+        logEl.innerHTML = (matchData.logs || [])
+            .slice(-50)
+            .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
+            .join('') + `<div style="color: var(--danger); font-weight: bold; background: rgba(255,82,82,0.1); padding: 8px; border-radius: 4px; margin-top: 8px;">${threatMsg}</div>`;
+        if (logPanel) logPanel.setAttribute('data-phase', 'threat');
+    } else {
+        logEl.innerHTML = (matchData.logs || [])
+            .slice(-50) // 최근 50개 로그만 표시
+            .map(l => `<div>${l.message || `[${l.caster}] ${l.cardName} → ${l.target || ''} (${l.type}) ${l.amount || ''}`}</div>`)
+            .join('') || '<div class="muted">게임 로그가 여기에 표시됩니다.</div>';
+        if (logPanel) logPanel.removeAttribute('data-phase');
+    }
     logEl.scrollTop = logEl.scrollHeight;
 
     updateActionPanel();
