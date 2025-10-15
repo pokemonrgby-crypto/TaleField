@@ -47,6 +47,13 @@ function evaluate(valueOrExpr, state, casterUid) {
  * @returns {{newState: object, logs: object[]}} - 변경된 상태와 실행 로그
  */
 export function processStack(matchState) {
+    // TODO: 다자간 전투를 위한 광역 타겟팅 로직 추가
+    // 현재는 단일 대상(targetUid)만 처리하고 있음.
+    // 'all_enemies', 'all_players', 'random_enemy' 등의 타겟팅 식별자를 도입하고,
+    // op 처리 시점에서 해당 식별자에 맞는 UID 목록을 동적으로 생성해야 함.
+    // 예: const targets = resolveTargets(op.target, op.casterUid, state.players);
+    // 그 후 각 target에 대해 op 효과를 적용하는 루프를 추가.
+
     const logs = [];
     let state = JSON.parse(JSON.stringify(matchState)); // 원본 불변성 유지를 위한 깊은 복사
     const rng = createRNG(state.seed);

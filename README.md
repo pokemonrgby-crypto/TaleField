@@ -1,26 +1,43 @@
-# Godlike Field — Online MVP Starter (스케치 패키지)
+# TaleField — 갓필드 스타일 AI 협업 TCG
 
-> 날짜: 2025-10-02
+> AI와 함께 만드는 갓필드 스타일 웹 TCG
 
-이 패키지는 **갓필드 느낌 + AI 사용자 제작 카드** 온라인 게임의 **문서 스케치**를 포함해.
-아직 코드를 붙이지 않고도, 규칙·스키마·API·상태머신을 정리하고 바로 다음 단계(레포 생성, 간단 실행)로 갈 수 있도록 만든 초안이야.
+이 프로젝트는 **갓필드 스타일의 다자간 전투 + AI 사용자 제작 카드** 온라인 게임입니다.
+플레이어들이 AI의 도움을 받아 카드와 캐릭터를 생성하고, 모두의 카드를 섞은 공용 덱으로 배틀을 즐기는 독특한 TCG 경험을 제공합니다.
 
-## 구성
-- `docs/rules.md` — 게임 규칙(라운드/턴/코스트/반응창)
-- `docs/engine-sketch.md` — 동사(피해/회복 등) 기반 미니 DSL & 타이밍 창/스택 설계
-- `backend/state-machine.md` — 로비/매치/턴/스택 상태 전이 정의
-- `backend/api-spec.md` — 서버 함수(API) 명세 (createRoom/joinRoom/…/playCard/react 등)
-- `backend/firestore-schema.json` — Firebase Firestore 기준 데이터 스키마(초안)
-- `backend/security.md` — 안티치트/밸런스/검증기 규칙
-- `data/cards.json` — 예시 카드 6장
-- `data/characters.json` — 예시 캐릭터 2명
-- `ui/wireframes.md` — 최소 UI 흐름(로비/게임화면)
-- `prompts/card-prompt.txt`, `prompts/character-prompt.txt` — AI 생성용 프롬프트 템플릿
-- `docs/quickstart-firebase.md` — **온라인 실행**을 가장 빨리 만드는 루트(A안: Firebase)
+## 핵심 특징
 
-## 다음 단계(추천 순서)
-1) 문서만 읽고 용어/룰을 다듬어 — 특히 `rules.md`, `engine-sketch.md`.
-2) 카드 10장 아이디어를 `data/cards.json` 형식을 따라 더 써 넣어.
-3) GitHub 레포를 만들고 이 파일들을 올려.
-4) `docs/quickstart-firebase.md`를 따라 **온라인 MVP**를 띄워 (Hosting+Firestore+Functions).
-5) 그 다음, 너가 최신 레포를 주면 **정밀 패치 지시(앵커→교체/추가)**로 서버/클라 코드를 붙여줄게.
+### 🎴 AI 카드 생성
+- Gemini API를 활용한 실시간 카드 생성
+- 사용자의 아이디어를 밸런스 있는 TCG 카드로 변환
+- DSL(Domain Specific Language) 기반의 카드 효과 시스템
+
+### 🎮 갓필드 스타일 게임플레이
+- **공용 덱 시스템**: 모든 플레이어가 제출한 카드를 섞어 하나의 덱으로 플레이
+- **다자간 배틀**: 2~8명이 함께하는 FFA(Free-For-All) 전투
+- **최후의 1인**: 마지막까지 생존한 플레이어가 승리
+
+### ⚔️ 전략적 전투 시스템
+- 기력(Ki) 자원 관리
+- 반응(Reaction) 카드를 통한 대응 전략
+- 스택 기반 효과 해결 시스템
+
+## 프로젝트 구조
+- `functions/` — Firebase Cloud Functions (백엔드 로직)
+  - `index.js` — AI 생성, 방/게임 관리 함수
+  - `src/actions.js` — 전투 액션 (카드 사용, 턴 종료)
+  - `src/engine.js` — 게임 엔진 (스택 처리)
+- `public/` — 프론트엔드 (HTML, CSS, JavaScript)
+  - `js/tabs/` — 각 화면별 로직 (로비, 방, 매치, 카드 생성 등)
+- `docs/` — 게임 규칙 및 설계 문서
+  - `rules.md` — 게임 규칙
+  - `engine-sketch.md` — 엔진 설계
+  - `quickstart-firebase.md` — Firebase 배포 가이드
+
+## 시작하기
+1. Firebase 프로젝트 생성 및 설정
+2. Gemini API 키 설정
+3. `firebase deploy` 명령으로 배포
+4. 웹 브라우저에서 접속하여 플레이
+
+자세한 내용은 `docs/quickstart-firebase.md`를 참조하세요.
