@@ -55,7 +55,7 @@
         </div>
         <div class="selection-container">
           <div id="character-selection-area">
-            <h3>캐릭터 선택</h3>
+            <h3>신(Shin) 선택</h3>
             <div id="room-my-characters" class="card-grid small"></div>
           </div>
           <div id="skill-selection-area" style="display:none;">
@@ -64,8 +64,8 @@
           </div>
         </div>
         <div class="card-selection-container">
-            <h3>내 카드 덱 (5~10장 선택)</h3>
-            <p class="muted">현재 <span id="room-selected-card-count">0</span>장 선택됨</p>
+            <h3>천계 덱에 제출할 성물 (정확히 7개 선택)</h3>
+            <p class="muted">현재 <span id="room-selected-card-count">0</span>개 선택됨</p>
             <div id="room-my-cards" class="card-grid small"></div>
             <button id="btn-ready" class="btn primary" style="margin-top: 16px;">준비 완료</button>
         </div>
@@ -85,9 +85,48 @@
             <div id="match-log" class="game-log"></div>
         </div>
         <div id="match-players-panel" class="match-panel">
-            <h3>플레이어</h3>
+            <h3>플레이어 상태</h3>
             <div id="match-player-list"></div>
-            <div id="my-player-state"></div>
+            <div id="my-player-state">
+                <div class="player-stats">
+                    <div class="stat-row">
+                        <span>HP:</span> <span id="my-hp">40/40</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>MP:</span> <span id="my-mp">10/10</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Gold:</span> <span id="my-gold">20/20</span>
+                    </div>
+                </div>
+                <div id="my-equipment-panel" class="equipment-panel">
+                    <h4>장비</h4>
+                    <div class="equipment-slots">
+                        <div class="equipment-slot" data-slot="weapon">
+                            <span class="slot-label">⚔️ 무기:</span>
+                            <span id="equipment-weapon" class="slot-value">없음</span>
+                        </div>
+                        <div class="equipment-slot" data-slot="shield">
+                            <span class="slot-label">🛡️ 방패:</span>
+                            <span id="equipment-shield" class="slot-value">없음</span>
+                        </div>
+                        <div class="equipment-slot" data-slot="accessory">
+                            <span class="slot-label">💎 장신구:</span>
+                            <span id="equipment-accessory" class="slot-value">없음</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="my-disasters-panel" class="disasters-panel">
+                    <h4>재앙</h4>
+                    <div id="my-disasters" class="disasters-list">없음</div>
+                </div>
+            </div>
+        </div>
+        <div id="match-miracles-panel" class="match-panel">
+            <h3>기적 목록</h3>
+            <div id="my-miracles" class="card-grid small">
+                <p class="muted">고유 기적이 여기에 표시됩니다.</p>
+            </div>
         </div>
         <div id="match-hand-panel" class="match-panel">
             <h3>내 손패</h3>
@@ -113,19 +152,19 @@
     </section>
     
     <section id="view-my-characters">
-        <h1 class="page-title">내 캐릭터</h1>
+        <h1 class="page-title">내 신(Shin)</h1>
         <div class="toolbar">
             <button id="btn-refresh-my-chars" class="btn">새로고침</button>
-            <span id="my-chars-status" class="muted">내가 생성한 캐릭터 목록입니다.</span>
+            <span id="my-chars-status" class="muted">내가 생성한 신 목록입니다.</span>
         </div>
         <div id="my-chars-grid" class="card-grid"></div>
     </section>
 
     <section id="view-my-cards">
-        <h1 class="page-title">내 카드</h1>
+        <h1 class="page-title">내 성물(Artifact)</h1>
         <div class="toolbar">
             <button id="btn-refresh-my-cards" class="btn">새로고침</button>
-            <span id="my-cards-status" class="muted">내가 생성한 카드 목록입니다.</span>
+            <span id="my-cards-status" class="muted">내가 생성한 성물 목록입니다.</span>
         </div>
         <div id="my-cards-grid" class="card-grid"></div>
     </section>
@@ -134,12 +173,12 @@
       <h1 class="page-title">생성</h1>
       <div class="gen-hub-container">
         <div class="gen-hub-item" id="btn-goto-gen-char">
-          <h2>AI 캐릭터 생성</h2>
-          <p>AI의 도움을 받아 세상에 하나뿐인 당신의 캐릭터를 만드세요.</p>
+          <h2>AI 신(Shin) 생성</h2>
+          <p>AI의 도움을 받아 예언자를 후원할 강력한 신과 고유 기적을 창조하세요.</p>
         </div>
         <div class="gen-hub-item" id="btn-goto-gen-card">
-          <h2>AI 카드 생성</h2>
-          <p>독창적인 아이디어로 새로운 카드를 만들어 게임의 메타를 바꾸세요.</p>
+          <h2>AI 성물(Artifact) 생성</h2>
+          <p>독창적인 아이디어로 새로운 성물을 만들어 천계 덱을 풍성하게 하세요.</p>
         </div>
       </div>
     </section>
@@ -147,10 +186,10 @@
     <section id="view-gen-char">
         <div class="page-header">
           <button class="btn btn-back" data-target="view-gen-hub">&lt; 뒤로가기</button>
-          <h1 class="page-title">AI 캐릭터 생성</h1>
+          <h1 class="page-title">AI 신(Shin) 생성</h1>
         </div>
         <div class="toolbar">
-          <textarea id="gen-char-prompt" placeholder="만들고 싶은 캐릭터의 아이디어를 150자 내로 자유롭게 적어주세요. (예: 강력한 방어력과 재생 능력을 가진 강철 골렘)" maxlength="150"></textarea>
+          <textarea id="gen-char-prompt" placeholder="만들고 싶은 신의 아이디어를 150자 내로 자유롭게 적어주세요. (예: 명왕신 하데스, 죽음과 암흑을 다스리는 과묵한 신)" maxlength="150"></textarea>
           <label>창의성 <input id="gen-char-temp" type="number" step="0.1" min="0" max="1" value="0.8" style="width:80px"></label>
           <button id="btn-gen-char" class="btn primary">Generate (1명)</button>
           <span id="gen-char-status" class="muted"></span>
@@ -161,12 +200,12 @@
     <section id="view-gen">
       <div class="page-header">
         <button class="btn btn-back" data-target="view-gen-hub">&lt; 뒤로가기</button>
-        <h1 class="page-title">AI 카드 생성</h1>
+        <h1 class="page-title">AI 성물(Artifact) 생성</h1>
       </div>
       <div class="toolbar">
-        <textarea id="gen-prompt" placeholder="만들고 싶은 카드의 아이디어를 150자 내로 자유롭게 적어주세요." maxlength="150"></textarea>
+        <textarea id="gen-prompt" placeholder="만들고 싶은 성물의 아이디어를 150자 내로 자유롭게 적어주세요. (예: 승천궁, 빛 속성의 자폭형 무기)" maxlength="150"></textarea>
         <label>창의성 <input id="gen-temp" type="number" step="0.1" min="0" max="1" value="0.8" style="width:80px"></label>
-        <button id="btn-gen-cards" class="btn primary">Generate (1장)</button>
+        <button id="btn-gen-cards" class="btn primary">Generate (1개)</button>
         <span id="gen-status" class="muted"></span>
       </div>
       <div id="gen-results" class="card-grid"></div>
@@ -176,8 +215,8 @@
   <nav class="bottom-nav">
     <div class="bottom-nav__tabs">
       <button data-tab="view-lobby" class="active">로비</button>
-      <button data-tab="view-my-characters">내 캐릭터</button>
-      <button data-tab="view-my-cards">내 카드</button>
+      <button data-tab="view-my-characters">내 신</button>
+      <button data-tab="view-my-cards">내 성물</button>
       <button data-tab="view-gen-hub">생성</button>
     </div>
   </nav>

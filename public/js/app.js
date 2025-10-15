@@ -5,14 +5,14 @@ import {
   signInWithGoogle, signOutUser
 } from "./firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { initMyCardsTab, loadMyCards } from "./tabs/my-cards.js";
+import { initMyCardsTab, loadMyArtifacts } from "./tabs/my-cards.js";
 import { initCharacterGenTab } from "./tabs/character-gen.js";
 import { initMyCharactersTab } from "./tabs/my-characters.js";
 import { initLobbyTab } from "./tabs/lobby.js";
 import { initRoomTab, leaveRoom, setRoomId } from "./tabs/room.js";
 import { initMatchTab, setMatchId } from "./tabs/match.js"; // Match 탭 추가
 import { state, setRoom } from "./state.js";
-import { callGenCard } from "./firebase.js";
+import { callGenArtifact } from "./firebase.js";
 
 // --- DOM Elements ---
 const $ = (q) => document.querySelector(q);
@@ -149,19 +149,32 @@ function setGenStatus(text, isError = false) {
   genStatusEl.style.color = isError ? 'var(--danger)' : 'var(--ink-dim)';
 }
 
-function renderGenResultCardTile(card) {
+function renderGenResultArtifactTile(artifact) {
     const el = document.createElement("div");
     el.className = "card";
-    el.dataset.attr = card.attribute;
+    el.dataset.attr = artifact.attribute;
+    
+    const typeIcon = {
+        weapon: "⚔️",
+        armor: "🛡️",
+        item: "📦",
+        miracle: "✨"
+    };
+    
+    const statsHTML = artifact.stats ? Object.entries(artifact.stats)
+        .map(([key, val]) => `${key}: ${val}`)
+        .join(', ') : '';
+    
     el.innerHTML = `
       <div class="card__title">
-        <span>${card.name}</span>
-        <div>${card.cost}</div>
+        <span>${typeIcon[artifact.cardType] || ''} ${artifact.name}</span>
+        <span class="muted">${artifact.cardType}</span>
       </div>
       <div class="card__body">
-        <div class="muted" style="font-size:0.85rem;">${card.attribute} / ${card.rarity}</div>
-        <p>${card.text || "(효과 없음)"}</p>
-        <div class="card__meta">Score: ${card.checks?.validatorScore ?? 0}</div>
+        <div class="muted" style="font-size:0.85rem;">속성: ${artifact.attribute}</div>
+        ${statsHTML ? `<div style="font-size:0.9rem; margin: 4px 0;">${statsHTML}</div>` : ''}
+        <p>${artifact.text || "(효과 없음)"}</p>
+        <div class="card__meta">Score: ${artifact.checks?.validatorScore ?? 0}</div>
       </div>
     `;
     return el;
@@ -170,7 +183,7 @@ function renderGenResultCardTile(card) {
 genBtn.addEventListener("click", async () => {
   if (genBtn.disabled) return; 
 
-  setGenStatus("AI가 카드를 생성하는 중...");
+  setGenStatus("AI가 성물을 생성하는 중...");
   genBtn.disabled = true;
 
   try {
@@ -187,20 +200,20 @@ genBtn.addEventListener("click", async () => {
       temperature: Number(genTempEl.value || 0.8)
     };
 
-    const result = await callGenCard(params);
+    const result = await callGenArtifact(params);
 
-    if (result.ok && result.card) {
-      const cardElement = renderGenResultCardTile(result.card);
-      genGridEl.prepend(cardElement);
-      setGenStatus(`'${result.card.name}' 카드를 생성했습니다! '내 카드' 탭에서도 확인 가능합니다.`);
-      loadMyCards();
+    if (result.ok && result.artifact) {
+      const artifactElement = renderGenResultArtifactTile(result.artifact);
+      genGridEl.prepend(artifactElement);
+      setGenStatus(`'${result.artifact.name}' 성물을 생성했습니다! '내 카드' 탭에서도 확인 가능합니다.`);
+      loadMyArtifacts();
     } else {
-        throw new Error(result.error || "AI가 유효한 카드를 반환하지 않았습니다.");
+        throw new Error(result.error || "AI가 유효한 성물을 반환하지 않았습니다.");
     }
 
   } catch (e) {
     console.error(e);
-    setGenStatus(e.message || "카드 생성 중 오류가 발생했습니다.", true);
+    setGenStatus(e.message || "성물 생성 중 오류가 발생했습니다.", true);
   } finally {
     genBtn.disabled = false;
   }

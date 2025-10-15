@@ -446,3 +446,154 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
     color: #fff;
 }
 /* ▲▲▲▲▲ 신규/수정된 매치 화면 스타일 ▲▲▲▲▲ */
+
+/* GodField UI 스타일 */
+.player-stats {
+    padding: 12px;
+    background: var(--bg-input);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line-main);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+.stat-row span:first-child {
+    font-weight: 600;
+    color: var(--ink-dim);
+}
+
+.stat-row span:last-child {
+    font-weight: 700;
+    color: var(--accent-secondary);
+}
+
+.equipment-panel {
+    padding: 12px;
+    background: var(--bg-input);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.equipment-panel h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.9rem;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+}
+
+.equipment-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.equipment-slot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--line-main);
+    border-radius: 6px;
+}
+
+.slot-label {
+    font-size: 0.85rem;
+    color: var(--ink-dim);
+}
+
+.slot-value {
+    font-weight: 600;
+    color: var(--ink-main);
+}
+
+.disasters-panel {
+    padding: 12px;
+    background: var(--bg-input);
+    border-radius: 8px;
+}
+
+.disasters-panel h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.9rem;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+}
+
+.disasters-list {
+    padding: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--line-main);
+    border-radius: 6px;
+    min-height: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.disaster-badge {
+    padding: 4px 8px;
+    background: var(--danger);
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+#match-miracles-panel {
+    background: var(--bg-panel);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+#match-miracles-panel h3 {
+    margin: 0 0 12px 0;
+    font-size: 1.1rem;
+    color: var(--accent-secondary);
+}
+
+#my-miracles {
+    min-height: 100px;
+}
+
+/* 성물 타입 아이콘 스타일 */
+.card[data-attr="無"] { border-left: 4px solid var(--attr-neutral); }
+.card[data-attr="火"] { border-left: 4px solid var(--attr-fire); }
+.card[data-attr="水"] { border-left: 4px solid var(--attr-water); }
+.card[data-attr="木"] { border-left: 4px solid var(--attr-wind); }
+.card[data-attr="土"] { border-left: 4px solid var(--attr-earth); }
+.card[data-attr="光"] { border-left: 4px solid var(--attr-light); }
+.card[data-attr="暗"] { border-left: 4px solid var(--attr-dark); }
+
+/* 버튼 스타일 추가 */
+.btn-delete-artifact, .btn-delete-card {
+    margin-top: 8px;
+    padding: 6px 12px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.btn-delete-artifact:hover, .btn-delete-card:hover {
+    background: #d32f2f;
+}
+
+.card__actions {
+    padding: 8px 14px;
+    border-top: 1px solid var(--line-main);
+    display: flex;
+    justify-content: flex-end;
+}
