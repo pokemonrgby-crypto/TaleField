@@ -118,13 +118,8 @@ export function processStack(matchState) {
         const caster = state.players[op.casterUid];
         
         // 이미 패배한 플레이어는 행동 불가
-        if (caster.isDefeated) continue;
-
-        const target = op.targetUid ? state.players[op.targetUid] : caster; // 타겟이 없으면 자기 자신
-        
-        // 이미 패배한 플레이어는 대상이 될 수 없음 (일부 효과 제외)
-        if (target.isDefeated) continue;
-
+        if (caster?.isDefeated) continue;
+        if (!caster) continue; // 시전자가 없으면 스킵
 
         const logEntry = {
             type: 'op_start',
@@ -137,29 +132,57 @@ export function processStack(matchState) {
 
         switch (op.op) {
             case 'damage': {
+                // Multi-target support
+                const targetId = op.target || (op.targetUid ? op.targetUid : 'caster');
+                const targets = resolveTargets(targetId, op.casterUid, state.players, rng);
                 const amount = evaluate(op.amount, state, op.casterUid);
-                target.hp -= amount;
-                logs.push({ ...logEntry, type:'damage', target: target.nickname, amount });
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.isDefeated) continue;
+                    targetPlayer.hp -= amount;
+                    logs.push({ ...logEntry, type:'damage', target: targetPlayer.nickname, amount });
+                }
                 break;
             }
             case 'heal': {
+                // Multi-target support
+                const targetId = op.target || (op.targetUid ? op.targetUid : 'caster');
+                const targets = resolveTargets(targetId, op.casterUid, state.players, rng);
                 const amount = evaluate(op.amount, state, op.casterUid);
-                target.hp = Math.min(target.maxHp, target.hp + amount);
-                logs.push({ ...logEntry, type:'heal', target: target.nickname, amount });
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.isDefeated) continue;
+                    targetPlayer.hp = Math.min(targetPlayer.maxHp, targetPlayer.hp + amount);
+                    logs.push({ ...logEntry, type:'heal', target: targetPlayer.nickname, amount });
+                }
                 break;
             }
             case 'draw': {
+                // Multi-target support
+                const targetId = op.target || (op.targetUid ? op.targetUid : 'caster');
+                const targets = resolveTargets(targetId, op.casterUid, state.players, rng);
                 const count = evaluate(op.count, state, op.casterUid);
-                for (let i = 0; i < count && state.commonDeck.length > 0; i++) {
-                    target.hand.push(state.commonDeck.pop());
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.isDefeated) continue;
+                    for (let i = 0; i < count && state.commonDeck.length > 0; i++) {
+                        targetPlayer.hand.push(state.commonDeck.pop());
+                    }
+                    logs.push({ ...logEntry, type:'draw', target: targetPlayer.nickname, count });
                 }
-                logs.push({ ...logEntry, type:'draw', target: target.nickname, count });
                 break;
             }
             case 'addMarker': {
-                if (!target.markers) target.markers = [];
-                target.markers.push({ name: op.name, remainingTurns: op.turns });
-                logs.push({ ...logEntry, type:'add_marker', target: target.nickname, marker: op.name, turns: op.turns });
+                // Multi-target support
+                const targetId = op.target || (op.targetUid ? op.targetUid : 'caster');
+                const targets = resolveTargets(targetId, op.casterUid, state.players, rng);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.isDefeated) continue;
+                    if (!targetPlayer.markers) targetPlayer.markers = [];
+                    targetPlayer.markers.push({ name: op.name, remainingTurns: op.turns });
+                    logs.push({ ...logEntry, type:'add_marker', target: targetPlayer.nickname, marker: op.name, turns: op.turns });
+                }
                 break;
             }
             case 'if': {
@@ -270,17 +293,29 @@ export function processStack(matchState) {
             }
             case 'reflect_damage': {
                 // 피해 반사는 실제 피해 처리 중에 활성화되어야 하므로 플래그 설정
+                const targetId = op.target || (op.targetUid ? op.targetUid : 'caster');
+                const targets = resolveTargets(targetId, op.casterUid, state.players, rng);
                 const multiplier = op.multiplier || 1.0;
-                if (!target.reflectDamage) target.reflectDamage = [];
-                target.reflectDamage.push({ multiplier, cardName: op.cardName });
-                logs.push({ ...logEntry, type:'reflect_damage', target: target.nickname, multiplier });
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.isDefeated) continue;
+                    if (!targetPlayer.reflectDamage) targetPlayer.reflectDamage = [];
+                    targetPlayer.reflectDamage.push({ multiplier, cardName: op.cardName });
+                    logs.push({ ...logEntry, type:'reflect_damage', target: targetPlayer.nickname, multiplier });
+                }
                 break;
             }
             case 'on_user_death': {
                 // 사망 트리거는 플레이어에게 등록
-                if (!target.deathTriggers) target.deathTriggers = [];
-                target.deathTriggers.push({ dsl: op.dsl, cardName: op.cardName });
-                logs.push({ ...logEntry, type:'on_user_death', target: target.nickname });
+                const targetId = op.target || (op.targetUid ? op.targetUid : 'caster');
+                const targets = resolveTargets(targetId, op.casterUid, state.players, rng);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.isDefeated) continue;
+                    if (!targetPlayer.deathTriggers) targetPlayer.deathTriggers = [];
+                    targetPlayer.deathTriggers.push({ dsl: op.dsl, cardName: op.cardName });
+                    logs.push({ ...logEntry, type:'on_user_death', target: targetPlayer.nickname });
+                }
                 break;
             }
             case 'equip': {
