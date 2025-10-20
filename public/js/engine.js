@@ -149,7 +149,76 @@ class GameSimulator {
         }
         break;
       }
-       // forEach, addTrigger 등 다른 op들도 여기에 구현...
+      case "random": {
+        const roll = this.rng();
+        const success = roll < op.chance;
+        this.log.push(`  - 확률 판정 (${op.chance * 100}%) 결과: ${success ? '성공' : '실패'} (roll: ${roll.toFixed(3)})`);
+        const toExecute = success ? op.then : op.else;
+        if (toExecute) {
+            for(const nextOp of toExecute) this.executeOp(nextOp, context);
+        }
+        break;
+      }
+      case "draw": {
+        const count = this.evaluate(op.count, context);
+        // 간단한 시뮬레이션에서는 실제로 덱에서 뽑지 않고 로그만 기록
+        this.log.push(`  - ${context.target?.id || context.caster.id} 카드 ${count}장 뽑기`);
+        break;
+      }
+      case "addMarker": {
+        const targetId = context.target?.id || context.caster.id;
+        this.log.push(`  - ${targetId}에게 마커 [${op.name}] 추가 (${op.turns}턴)`);
+        break;
+      }
+      case "apply_disaster": {
+        const targetId = context.target?.id || context.caster.id;
+        this.log.push(`  - ${targetId}에게 재앙 [${op.disasterName}] 적용`);
+        break;
+      }
+      case "remove_disaster": {
+        const targetId = context.target?.id || context.caster.id;
+        const disasterName = op.disasterName || '모든 재앙';
+        this.log.push(`  - ${targetId}의 재앙 [${disasterName}] 제거`);
+        break;
+      }
+      case "modify_stat": {
+        const amount = this.evaluate(op.amount, context);
+        const targetId = context.target?.id || context.caster.id;
+        const statName = op.target_stat || 'hp';
+        this.log.push(`  - ${targetId}의 ${statName.toUpperCase()} ${amount >= 0 ? '+' : ''}${amount}`);
+        break;
+      }
+      case "discard": {
+        const count = this.evaluate(op.count, context);
+        const targetId = context.target?.id || context.caster.id;
+        this.log.push(`  - ${targetId} 카드 ${count}장 버리기`);
+        break;
+      }
+      case "absorb_hp": {
+        const amount = this.evaluate(op.amount, context);
+        this.log.push(`  - ${context.target?.id}에게서 HP ${amount} 흡수`);
+        this.log.push(`  - ${context.caster.id} HP 회복 ${amount}`);
+        break;
+      }
+      case "reflect_damage": {
+        const multiplier = op.multiplier || 1.0;
+        this.log.push(`  - 피해 반사 효과 활성화 (배율: ${multiplier}x)`);
+        break;
+      }
+      case "on_user_death": {
+        this.log.push(`  - 사망 트리거 등록`);
+        break;
+      }
+      case "equip": {
+        const slot = op.slot || 'weapon';
+        this.log.push(`  - ${slot} 슬롯에 장착`);
+        break;
+      }
+      case "change_attribute": {
+        const targetId = context.target?.id || context.caster.id;
+        this.log.push(`  - ${targetId}의 속성 변환: ${op.from} → ${op.to}`);
+        break;
+      }
       default:
         this.log.push(`  - (미구현 Op: ${op.op})`);
     }

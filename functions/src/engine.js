@@ -41,19 +41,46 @@ function evaluate(valueOrExpr, state, casterUid) {
 
 
 /**
+ * 타겟 식별자를 실제 플레이어 UID 목록으로 변환합니다.
+ * @param {string} target - 타겟 식별자 ('enemy', 'caster', 'all_enemies', 'all_players', 'random_enemy', 또는 실제 UID)
+ * @param {string} casterUid - 시전자 UID
+ * @param {object} players - 플레이어 객체 맵
+ * @param {function} rng - 랜덤 함수
+ * @returns {string[]} - 타겟 UID 배열
+ */
+function resolveTargets(target, casterUid, players, rng) {
+    if (!target) return [casterUid];
+    
+    const allUids = Object.keys(players);
+    const otherUids = allUids.filter(uid => uid !== casterUid && !players[uid].isDefeated);
+    
+    switch (target) {
+        case 'caster':
+            return [casterUid];
+        case 'enemy':
+            // 기본 단일 대상 (첫 번째 적)
+            return otherUids.length > 0 ? [otherUids[0]] : [];
+        case 'all_enemies':
+            return otherUids;
+        case 'all_players':
+            return allUids.filter(uid => !players[uid].isDefeated);
+        case 'random_enemy':
+            if (otherUids.length === 0) return [];
+            const randomIndex = Math.floor(rng() * otherUids.length);
+            return [otherUids[randomIndex]];
+        default:
+            // 실제 UID로 간주
+            return players[target] ? [target] : [];
+    }
+}
+
+/**
  * Firestore에 기록된 스택을 처리하여 게임 상태를 변경하고 로그를 생성합니다.
  * 이 함수가 전투 시스템의 핵심 두뇌 역할을 합니다.
  * @param {object} matchState - 현재 매치 데이터
  * @returns {{newState: object, logs: object[]}} - 변경된 상태와 실행 로그
  */
 export function processStack(matchState) {
-    // TODO: 다자간 전투를 위한 광역 타겟팅 로직 추가
-    // 현재는 단일 대상(targetUid)만 처리하고 있음.
-    // 'all_enemies', 'all_players', 'random_enemy' 등의 타겟팅 식별자를 도입하고,
-    // op 처리 시점에서 해당 식별자에 맞는 UID 목록을 동적으로 생성해야 함.
-    // 예: const targets = resolveTargets(op.target, op.casterUid, state.players);
-    // 그 후 각 target에 대해 op 효과를 적용하는 루프를 추가.
-
     const logs = [];
     let state = JSON.parse(JSON.stringify(matchState)); // 원본 불변성 유지를 위한 깊은 복사
     const rng = createRNG(state.seed);
@@ -135,6 +162,120 @@ export function processStack(matchState) {
                 const toExecute = success ? op.then : op.else;
                 if (toExecute) {
                     stack.push(...[...toExecute].reverse().map(nextOp => ({...nextOp, casterUid: op.casterUid, cardName: op.cardName})));
+                }
+                break;
+            }
+            case 'apply_disaster': {
+                const targets = resolveTargets(op.target, op.casterUid, state.players, rng);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (!targetPlayer.disasters) targetPlayer.disasters = [];
+                    targetPlayer.disasters.push({ name: op.disasterName, level: 1 });
+                    logs.push({ ...logEntry, type:'apply_disaster', target: targetPlayer.nickname, disaster: op.disasterName });
+                }
+                break;
+            }
+            case 'remove_disaster': {
+                const targets = resolveTargets(op.target, op.casterUid, state.players, rng);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    if (targetPlayer.disasters) {
+                        if (op.disasterName) {
+                            // 특정 재앙 제거
+                            targetPlayer.disasters = targetPlayer.disasters.filter(d => d.name !== op.disasterName);
+                            logs.push({ ...logEntry, type:'remove_disaster', target: targetPlayer.nickname, disaster: op.disasterName });
+                        } else {
+                            // 모든 재앙 제거
+                            targetPlayer.disasters = [];
+                            logs.push({ ...logEntry, type:'remove_disaster', target: targetPlayer.nickname, disaster: 'all' });
+                        }
+                    }
+                }
+                break;
+            }
+            case 'modify_stat': {
+                const targets = resolveTargets(op.target, op.casterUid, state.players, rng);
+                const amount = evaluate(op.amount, state, op.casterUid);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    const statName = op.target_stat || 'hp';
+                    
+                    if (statName === 'hp') {
+                        targetPlayer.hp = Math.max(0, Math.min(targetPlayer.maxHp, targetPlayer.hp + amount));
+                    } else if (statName === 'mp') {
+                        targetPlayer.mp = Math.max(0, Math.min(targetPlayer.maxMp || 99, targetPlayer.mp + amount));
+                    } else if (statName === 'gold') {
+                        targetPlayer.gold = Math.max(0, Math.min(99, targetPlayer.gold + amount));
+                    }
+                    logs.push({ ...logEntry, type:'modify_stat', target: targetPlayer.nickname, stat: statName, amount });
+                }
+                break;
+            }
+            case 'discard': {
+                const targets = resolveTargets(op.target, op.casterUid, state.players, rng);
+                const count = evaluate(op.count, state, op.casterUid);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    const discarded = targetPlayer.hand.splice(0, Math.min(count, targetPlayer.hand.length));
+                    state.discardPile = state.discardPile || [];
+                    state.discardPile.push(...discarded);
+                    logs.push({ ...logEntry, type:'discard', target: targetPlayer.nickname, count: discarded.length });
+                }
+                break;
+            }
+            case 'absorb_hp': {
+                const targets = resolveTargets(op.target, op.casterUid, state.players, rng);
+                const amount = evaluate(op.amount, state, op.casterUid);
+                let totalAbsorbed = 0;
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    const absorbed = Math.min(amount, targetPlayer.hp);
+                    targetPlayer.hp -= absorbed;
+                    totalAbsorbed += absorbed;
+                    logs.push({ ...logEntry, type:'absorb_hp', target: targetPlayer.nickname, amount: absorbed });
+                }
+                // 흡수한 HP를 시전자에게 회복
+                if (totalAbsorbed > 0) {
+                    caster.hp = Math.min(caster.maxHp, caster.hp + totalAbsorbed);
+                    logs.push({ ...logEntry, type:'heal', target: caster.nickname, amount: totalAbsorbed, source: 'absorb' });
+                }
+                break;
+            }
+            case 'reflect_damage': {
+                // 피해 반사는 실제 피해 처리 중에 활성화되어야 하므로 플래그 설정
+                const multiplier = op.multiplier || 1.0;
+                if (!target.reflectDamage) target.reflectDamage = [];
+                target.reflectDamage.push({ multiplier, cardName: op.cardName });
+                logs.push({ ...logEntry, type:'reflect_damage', target: target.nickname, multiplier });
+                break;
+            }
+            case 'on_user_death': {
+                // 사망 트리거는 플레이어에게 등록
+                if (!target.deathTriggers) target.deathTriggers = [];
+                target.deathTriggers.push({ dsl: op.dsl, cardName: op.cardName });
+                logs.push({ ...logEntry, type:'on_user_death', target: target.nickname });
+                break;
+            }
+            case 'equip': {
+                // 장비 슬롯에 카드 장착
+                const slot = op.slot || 'weapon';
+                if (!caster.equipment) caster.equipment = {};
+                // 이미 장착된 장비는 손으로 되돌림
+                if (caster.equipment[slot]) {
+                    caster.hand.push(caster.equipment[slot]);
+                }
+                caster.equipment[slot] = { cardName: op.cardName };
+                logs.push({ ...logEntry, type:'equip', target: caster.nickname, slot });
+                break;
+            }
+            case 'change_attribute': {
+                const targets = resolveTargets(op.target, op.casterUid, state.players, rng);
+                for (const targetUid of targets) {
+                    const targetPlayer = state.players[targetUid];
+                    // 속성 변환은 특정 효과나 버프에 저장
+                    if (!targetPlayer.attributeChanges) targetPlayer.attributeChanges = [];
+                    targetPlayer.attributeChanges.push({ from: op.from, to: op.to });
+                    logs.push({ ...logEntry, type:'change_attribute', target: targetPlayer.nickname, from: op.from, to: op.to });
                 }
                 break;
             }
