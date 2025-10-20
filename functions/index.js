@@ -526,6 +526,12 @@ export const playerAction = functions
                     return handleDefend(tx, matchRef, matchData, uid, payload);
                 case "PRAY":
                     return handlePray(tx, matchRef, matchData, uid, payload);
+                case "USE_ARTIFACT":
+                    return handleUseArtifact(tx, matchRef, matchData, uid, payload);
+                case "TRADE":
+                    return handleTrade(tx, matchRef, matchData, uid, payload);
+                case "DISCARD":
+                    return handleDiscard(tx, matchRef, matchData, uid, payload);
                 default:
                     throw new HttpsError("unimplemented", `${actionType} 액션은 아직 구현되지 않았습니다.`);
             }
@@ -785,6 +791,156 @@ function handlePray(tx, matchRef, matchData, uid, payload) {
     return { 
         ok: true, 
         message: `${player.nickname}이(가) 기도하여 ${drawnCards.length}장의 카드를 얻었습니다.` 
+    };
+}
+
+/**
+ * USE_ARTIFACT 액션 처리: 아이템이나 기적 사용
+ */
+function handleUseArtifact(tx, matchRef, matchData, uid, payload) {
+    const { cardId, targetUid, source } = z.object({
+        cardId: z.string(),
+        targetUid: z.string().optional(),
+        source: z.enum(['hand', 'miracles']).default('hand')
+    }).parse(payload);
+
+    const player = matchData.players[uid];
+
+    // 검증: 현재 플레이어의 턴인지 확인
+    if (matchData.currentPlayerUid !== uid) {
+        throw new HttpsError("failed-precondition", "당신의 턴이 아닙니다.");
+    }
+
+    // 검증: 메인 페이즈인지 확인
+    if (matchData.phase !== 'main') {
+        throw new HttpsError("failed-precondition", "메인 페이즈에서만 성물을 사용할 수 있습니다.");
+    }
+
+    let card = null;
+    let cardIndex = -1;
+
+    // 카드 찾기 (손패 또는 기적 목록)
+    if (source === 'hand') {
+        cardIndex = player.hand.findIndex(c => (c.id || c.instanceId) === cardId);
+        if (cardIndex === -1) {
+            throw new HttpsError("not-found", "카드가 손에 없습니다.");
+        }
+        card = player.hand[cardIndex];
+    } else if (source === 'miracles') {
+        cardIndex = player.miracles?.findIndex(c => (c.id || c.name) === cardId) ?? -1;
+        if (cardIndex === -1) {
+            throw new HttpsError("not-found", "기적이 목록에 없습니다.");
+        }
+        card = player.miracles[cardIndex];
+    }
+
+    // 검증: 카드 타입이 아이템 또는 기적인지 확인
+    if (card.cardType !== 'item' && card.cardType !== 'miracle') {
+        throw new HttpsError("invalid-argument", "아이템이나 기적만 이 방식으로 사용할 수 있습니다.");
+    }
+
+    // MP 소모 확인 (기적의 경우)
+    if (card.cardType === 'miracle') {
+        const mpCost = card.stats?.mpCost || 0;
+        if (player.mp < mpCost) {
+            throw new HttpsError("failed-precondition", "MP가 부족합니다.");
+        }
+        player.mp -= mpCost;
+    }
+
+    // Gold 소모 확인 (거래 아이템의 경우)
+    if (card.stats?.goldValue && card.stats.goldValue > 0) {
+        if (player.gold < card.stats.goldValue) {
+            throw new HttpsError("failed-precondition", "Gold가 부족합니다.");
+        }
+        player.gold -= card.stats.goldValue;
+    }
+
+    // 손패에서 카드 제거 (아이템인 경우만)
+    if (source === 'hand') {
+        player.hand.splice(cardIndex, 1);
+    }
+
+    // DSL 효과를 스택에 추가
+    const newOps = (card.dsl || []).map(op => ({
+        ...op,
+        casterUid: uid,
+        targetUid: targetUid || uid,
+        cardName: card.name,
+    }));
+
+    matchData.stack = matchData.stack || [];
+    matchData.stack.push(...newOps);
+
+    // phase를 'reaction'으로 변경 (다른 플레이어가 반응할 수 있도록)
+    const updateData = {
+        [`players.${uid}`]: player,
+        stack: matchData.stack,
+        phase: 'reaction',
+        reactionEndsAt: FieldValue.serverTimestamp()
+    };
+
+    tx.update(matchRef, updateData);
+
+    return { 
+        ok: true, 
+        message: `${player.nickname}이(가) ${card.name}을(를) 사용했습니다!` 
+    };
+}
+
+/**
+ * TRADE 액션 처리: 플레이어 간 거래 (미구현 - 향후 추가)
+ */
+function handleTrade(tx, matchRef, matchData, uid, payload) {
+    // 거래 시스템은 복잡하므로 기본 구현만 제공
+    throw new HttpsError("unimplemented", "거래 기능은 아직 구현되지 않았습니다.");
+}
+
+/**
+ * DISCARD 액션 처리: 카드 버리기
+ */
+function handleDiscard(tx, matchRef, matchData, uid, payload) {
+    const { cardIds } = z.object({
+        cardIds: z.array(z.string()).min(1)
+    }).parse(payload);
+
+    const player = matchData.players[uid];
+
+    // 검증: 현재 플레이어의 턴인지 확인
+    if (matchData.currentPlayerUid !== uid) {
+        throw new HttpsError("failed-precondition", "당신의 턴이 아닙니다.");
+    }
+
+    // 검증: 메인 페이즈인지 확인
+    if (matchData.phase !== 'main') {
+        throw new HttpsError("failed-precondition", "메인 페이즈에서만 카드를 버릴 수 있습니다.");
+    }
+
+    // 카드 버리기
+    const discardedCards = [];
+    for (const cardId of cardIds) {
+        const cardIndex = player.hand.findIndex(c => (c.id || c.instanceId) === cardId);
+        if (cardIndex === -1) {
+            throw new HttpsError("not-found", `카드 ${cardId}가 손에 없습니다.`);
+        }
+        discardedCards.push(player.hand[cardIndex]);
+        player.hand.splice(cardIndex, 1);
+    }
+
+    // 버린 카드 더미에 추가
+    matchData.discardPile = matchData.discardPile || [];
+    matchData.discardPile.push(...discardedCards);
+
+    const updateData = {
+        [`players.${uid}`]: player,
+        discardPile: matchData.discardPile
+    };
+
+    tx.update(matchRef, updateData);
+
+    return { 
+        ok: true, 
+        message: `${player.nickname}이(가) ${discardedCards.length}장의 카드를 버렸습니다.` 
     };
 }
 

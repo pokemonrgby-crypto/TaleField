@@ -98,12 +98,30 @@ class GameSimulator {
     // 간단한 표현식 해석기. 실제 게임에선 더 정교한 파서 필요.
     const code = expr.expr;
     const { caster, target, vars } = context;
+    
+    // roll(N) - N면체 주사위
     if (code.includes("roll(")) {
         const sides = parseInt(code.match(/roll\((\d+)\)/)[1], 10);
         return Math.floor(this.rng() * sides) + 1;
     }
+    
+    // caster 관련 표현식
     if (code === 'caster.hp') return this.state.players[caster.id].hp;
-    if (code === 'target.hp') return this.state.players[target.id].hp;
+    if (code === 'caster.mp') return this.state.players[caster.id].ki; // ki를 mp로 매핑
+    if (code === 'caster.gold') return this.state.players[caster.id].gold || 0;
+    if (code === 'caster.hand.count') return this.state.players[caster.id].hand?.length || 0;
+    if (code === 'caster.markers.count') return this.state.players[caster.id].markers?.length || 0;
+    if (code === 'caster.disasters.count') return this.state.players[caster.id].disasters?.length || 0;
+    if (code === 'caster.discardPile.count') return this.state.players[caster.id].discardPile?.length || 0;
+    
+    // target 관련 표현식
+    if (code === 'target.hp') return target ? this.state.players[target.id].hp : 0;
+    if (code === 'target.mp') return target ? this.state.players[target.id].ki : 0;
+    if (code === 'target.gold') return target ? (this.state.players[target.id].gold || 0) : 0;
+    if (code === 'target.markers.count') return target ? (this.state.players[target.id].markers?.length || 0) : 0;
+    if (code === 'target.disasters.count') return target ? (this.state.players[target.id].disasters?.length || 0) : 0;
+    
+    // 변수 표현식
     if (code.startsWith('vars.')) return this.state.vars[code.split('.')[1]];
 
     return 0; // 해석 실패 시

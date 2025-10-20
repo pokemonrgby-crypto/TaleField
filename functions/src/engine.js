@@ -29,12 +29,39 @@ function evaluate(valueOrExpr, state, casterUid) {
     const expr = valueOrExpr.expr;
     const caster = state.players[casterUid];
 
-    // 예시: "caster.discardPile.count" -> 버린 카드 수
+    // 동적 표현식 평가
     if (expr === "caster.discardPile.count") {
-        return state.discardPile.length;
+        return state.discardPile?.length || 0;
     }
-    // 추가적인 동적 값 표현식을 여기에 구현할 수 있습니다.
-    // 예: caster.hp, target.markers.length 등
+    if (expr === "caster.hp") {
+        return caster?.hp || 0;
+    }
+    if (expr === "caster.mp") {
+        return caster?.mp || 0;
+    }
+    if (expr === "caster.gold") {
+        return caster?.gold || 0;
+    }
+    if (expr === "caster.hand.count") {
+        return caster?.hand?.length || 0;
+    }
+    if (expr === "caster.markers.count") {
+        return caster?.markers?.length || 0;
+    }
+    if (expr === "caster.disasters.count") {
+        return caster?.disasters?.length || 0;
+    }
+    
+    // roll(N) - N면체 주사위 굴리기
+    if (expr.startsWith("roll(")) {
+        const match = expr.match(/roll\((\d+)\)/);
+        if (match) {
+            const sides = parseInt(match[1], 10);
+            const rng = createRNG(state.seed + (state.rollCount || 0));
+            state.rollCount = (state.rollCount || 0) + 1;
+            return Math.floor(rng() * sides) + 1;
+        }
+    }
 
     return 0; // 해석 실패 시 기본값
 }
