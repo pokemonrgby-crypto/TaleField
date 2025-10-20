@@ -14,7 +14,7 @@ import { processStack } from "./src/engine.js";
 const db = getFirestore();
 
 const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 const DAILY_ARTIFACT_LIMIT = 150; // 성물 생성 제한
 const DAILY_SHIN_LIMIT = 30;  // 신 생성 제한
 // 하위 호환성
