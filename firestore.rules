@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(ownerUid) {
+      return isAuthenticated() && request.auth.uid == ownerUid;
+    }
+    
+    function isPlayer(playerUid) {
+      return isAuthenticated() && request.auth.uid == playerUid;
+    }
+    
+    // User profiles
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update, delete: if isOwner(userId);
+    }
+    
+    // Shin (Characters/Gods)
+    match /shin/{shinId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                      request.resource.data.ownerUid == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      allow update: if isOwner(resource.data.ownerUid) || 
+                      request.auth.token.admin == true;
+      allow delete: if isOwner(resource.data.ownerUid);
+    }
+    
+    // Artifacts (Cards)
+    match /artifacts/{artifactId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                      request.resource.data.ownerUid == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      allow update: if isOwner(resource.data.ownerUid) || 
+                      request.auth.token.admin == true;
+      allow delete: if isOwner(resource.data.ownerUid);
+    }
+    
+    // Rooms
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                      request.resource.data.hostUid == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        // Host can update room
+        resource.data.hostUid == request.auth.uid ||
+        // Players can update their own data
+        exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid))
+      );
+      allow delete: if resource.data.hostUid == request.auth.uid;
+      
+      // Players subcollection
+      match /players/{playerId} {
+        allow read: if isAuthenticated();
+        allow write: if isPlayer(playerId) || 
+                       get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid;
+      }
+    }
+    
+    // Matches (Game sessions)
+    match /matches/{matchId} {
+      allow read: if isAuthenticated() && 
+                    request.auth.uid in resource.data.players.keys();
+      allow create: if isAuthenticated();
+      // Only Cloud Functions can update match state
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Bot configurations
+    match /bots/{botId} {
+      allow read: if isAuthenticated();
+      allow write: if request.auth.token.admin == true;
+    }
+    
+    // User statistics and rate limiting
+    match /userStats/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // Legacy collections for backward compatibility
+    match /userCards/{cardId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                      request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.ownerUid);
+    }
+    
+    match /userCharacters/{charId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                      request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.ownerUid);
+    }
+  }
+}

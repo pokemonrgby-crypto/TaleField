@@ -107,6 +107,18 @@ export async function callJoinRoom(params) {
     return res.data;
 }
 
+export async function callCreateBotRoom(params) {
+    const fn = httpsCallable(fx, "createBotRoom");
+    const res = await fn(params);
+    return res.data;
+}
+
+export async function callExecuteBotTurn(params) {
+    const fn = httpsCallable(fx, "executeBotTurn");
+    const res = await fn(params);
+    return res.data;
+}
+
 export async function callLeaveRoom(params) {
     const fn = httpsCallable(fx, "leaveRoom");
     const res = await fn(params);
