@@ -36,6 +36,26 @@
         <input id="room-title-input" placeholder="방 제목 (2~20자)" maxlength="20" style="flex-grow:1;">
         <button id="btn-create-room" class="btn primary">방 만들기</button>
       </div>
+      
+      <!-- Bot Battle Section -->
+      <div class="bot-battle-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, rgba(124,77,255,0.1), rgba(0,212,255,0.1)); border: 1px solid var(--line-main); border-radius: var(--radius-lg);">
+        <h3 style="margin-bottom: 12px; color: var(--accent-secondary);">🤖 봇 배틀 (솔로 플레이)</h3>
+        <p style="margin-bottom: 16px; color: var(--ink-dim);">AI 봇과 1:1 대결을 펼쳐보세요!</p>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <label style="color: var(--ink-main);">
+            난이도: 
+            <select id="bot-difficulty" style="margin-left: 8px; width: 120px;">
+              <option value="EASY">쉬움</option>
+              <option value="NORMAL" selected>보통</option>
+              <option value="HARD">어려움</option>
+            </select>
+          </label>
+          <button id="btn-create-bot-room" class="btn primary" style="background: linear-gradient(135deg, var(--accent-secondary), var(--accent-tertiary));">
+            봇과 대결하기
+          </button>
+        </div>
+      </div>
+      
       <ul id="room-list" class="room-list-container"></ul>
       <p id="lobby-status" class="muted"></p>
     </section>

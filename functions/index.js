@@ -1514,3 +1514,156 @@ export const leaveRoom = functions
 
         return { ok: true };
     });
+
+// ============================================
+// ===== Bot Battle Functions =====
+// ============================================
+
+/**
+ * 봇과의 솔로 플레이를 위한 방 생성
+ */
+export const createBotRoom = functions
+  .region("asia-northeast3")
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const uid = context.auth.uid;
+    
+    const { difficulty, title } = z.object({
+      difficulty: z.enum(['EASY', 'NORMAL', 'HARD']).default('NORMAL'),
+      title: z.string().min(2).max(50).default('봇 배틀')
+    }).parse(data);
+
+    // 프로필에서 닉네임 가져오기
+    const profileSnap = await db.doc(`profiles/${uid}`).get();
+    if (!profileSnap.exists) {
+      throw new HttpsError("failed-precondition", "프로필을 먼저 생성해주세요.");
+    }
+    const nickname = profileSnap.data().nickname;
+
+    // 방 생성
+    const roomRef = db.collection("rooms").doc();
+    const roomData = {
+      title: `${title} (vs ${difficulty} Bot)`,
+      hostUid: uid,
+      hostNickname: nickname,
+      status: "waiting",
+      maxPlayers: 2,
+      isBotRoom: true,
+      botDifficulty: difficulty,
+      players: [
+        {
+          uid: uid,
+          nickname: nickname,
+          isHost: true,
+          ready: false,
+          isBot: false,
+          shinId: null,
+          selectedArtifactIds: []
+        },
+        {
+          uid: 'bot_1',
+          nickname: `천계의 수호자 (${difficulty})`,
+          isHost: false,
+          ready: true,
+          isBot: true,
+          shinId: 'bot_shin',
+          selectedArtifactIds: [] // 봇 덱은 매치 시작 시 자동 생성
+        }
+      ],
+      createdAt: FieldValue.serverTimestamp(),
+      playerCount: 2
+    };
+
+    await roomRef.set(roomData);
+
+    return { ok: true, roomId: roomRef.id };
+  });
+
+/**
+ * 봇 턴 실행 (매치에서 봇 턴이 되면 자동 호출)
+ */
+export const executeBotTurn = functions
+  .region("asia-northeast3")
+  .https.onCall(async (data, context) => {
+    const { matchId } = z.object({
+      matchId: z.string()
+    }).parse(data);
+
+    const matchRef = db.doc(`matches/${matchId}`);
+    const matchSnap = await matchRef.get();
+    
+    if (!matchSnap.exists) {
+      throw new HttpsError("not-found", "매치를 찾을 수 없습니다.");
+    }
+
+    const matchData = matchSnap.data();
+    const currentPlayerUid = matchData.currentPlayerUid;
+    const currentPlayer = matchData.players[currentPlayerUid];
+
+    if (!currentPlayer?.isBot) {
+      throw new HttpsError("failed-precondition", "현재 턴은 봇의 턴이 아닙니다.");
+    }
+
+    // 봇 AI 로직 실행 (간단한 버전)
+    const botAction = decideBotAction(matchData, currentPlayerUid);
+
+    // 봇의 액션 실행
+    return await db.runTransaction(async (tx) => {
+      const freshMatch = await tx.get(matchRef);
+      const freshData = freshMatch.data();
+      
+      if (botAction.type === 'ATTACK') {
+        return handleAttack(tx, matchRef, freshData, currentPlayerUid, {
+          cardId: botAction.cardId,
+          targetUid: botAction.targetUid
+        });
+      } else if (botAction.type === 'PRAY') {
+        return handlePray(tx, matchRef, freshData, currentPlayerUid, {});
+      } else if (botAction.type === 'END_TURN') {
+        // 턴 종료 로직
+        const nextPlayerUid = getNextPlayerUid(freshData);
+        tx.update(matchRef, {
+          currentPlayerUid: nextPlayerUid,
+          phase: 'main'
+        });
+        return { ok: true, message: '봇이 턴을 종료했습니다.' };
+      }
+      
+      return { ok: true, message: '봇 액션 완료' };
+    });
+  });
+
+/**
+ * 간단한 봇 AI 의사결정 로직
+ */
+function decideBotAction(matchData, botUid) {
+  const botPlayer = matchData.players[botUid];
+  const hand = botPlayer.hand || [];
+  
+  // 무기가 있으면 공격
+  const weapon = hand.find(card => card.cardType === 'weapon');
+  if (weapon) {
+    // 랜덤 대상 선택
+    const opponents = Object.keys(matchData.players).filter(uid => uid !== botUid);
+    const targetUid = opponents[Math.floor(Math.random() * opponents.length)];
+    
+    return {
+      type: 'ATTACK',
+      cardId: weapon.instanceId,
+      targetUid: targetUid
+    };
+  }
+  
+  // 무기가 없으면 기도
+  return { type: 'PRAY' };
+}
+
+/**
+ * 다음 플레이어 UID 가져오기
+ */
+function getNextPlayerUid(matchData) {
+  const playerUids = Object.keys(matchData.players);
+  const currentIndex = playerUids.indexOf(matchData.currentPlayerUid);
+  const nextIndex = (currentIndex + 1) % playerUids.length;
+  return playerUids[nextIndex];
+}

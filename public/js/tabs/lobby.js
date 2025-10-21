@@ -1,11 +1,13 @@
 // public/js/tabs/lobby.js
-import { auth, db, callCreateRoom, callJoinRoom } from "../firebase.js";
+import { auth, db, callCreateRoom, callJoinRoom, callCreateBotRoom } from "../firebase.js";
 import { collection, onSnapshot, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 const $ = (q) => document.querySelector(q);
 
 const createRoomBtn = $("#btn-create-room");
+const createBotRoomBtn = $("#btn-create-bot-room");
+const botDifficultySelect = $("#bot-difficulty");
 const roomTitleEl = $("#room-title-input");
 const roomListEl = $("#room-list");
 const lobbyStatusEl = $("#lobby-status");
@@ -64,6 +66,30 @@ async function handleCreateRoom() {
     }
 }
 
+async function handleCreateBotRoom() {
+    if (createBotRoomBtn.disabled) return;
+    
+    const difficulty = botDifficultySelect.value || 'NORMAL';
+    
+    createBotRoomBtn.disabled = true;
+    try {
+        const result = await callCreateBotRoom({ 
+            difficulty, 
+            title: '봇 배틀' 
+        });
+        if (result.ok && result.roomId) {
+            window.location.hash = `#room/${result.roomId}`;
+        } else {
+            throw new Error(result.error || "봇 방 생성에 실패했습니다.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert(`오류: ${e.message}`);
+    } finally {
+        createBotRoomBtn.disabled = false;
+    }
+}
+
 
 function watchRooms() {
     if (unsubscribeRooms) unsubscribeRooms();
@@ -88,6 +114,10 @@ function watchRooms() {
 
 export function initLobbyTab() {
     createRoomBtn.addEventListener("click", handleCreateRoom);
+    
+    if (createBotRoomBtn) {
+        createBotRoomBtn.addEventListener("click", handleCreateBotRoom);
+    }
 
     // 로비 탭이 활성화될 때 방 목록 감시 시작
     const lobbyTabBtn = document.querySelector('button[data-tab="view-lobby"]');
