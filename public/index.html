@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TaleField :: Reborn</title>
   <link rel="stylesheet" href="./style.css">
-  
+
   <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com;
+  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdn.jsdelivr.net; /* eruda CDN 추가 */
   connect-src 'self'
     https://firestore.googleapis.com
     https://identitytoolkit.googleapis.com
@@ -36,14 +36,13 @@
         <input id="room-title-input" placeholder="방 제목 (2~20자)" maxlength="20" style="flex-grow:1;">
         <button id="btn-create-room" class="btn primary">방 만들기</button>
       </div>
-      
-      <!-- Bot Battle Section -->
+
       <div class="bot-battle-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, rgba(124,77,255,0.1), rgba(0,212,255,0.1)); border: 1px solid var(--line-main); border-radius: var(--radius-lg);">
         <h3 style="margin-bottom: 12px; color: var(--accent-secondary);">🤖 봇 배틀 (솔로 플레이)</h3>
         <p style="margin-bottom: 16px; color: var(--ink-dim);">AI 봇과 1:1 대결을 펼쳐보세요!</p>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <label style="color: var(--ink-main);">
-            난이도: 
+            난이도:
             <select id="bot-difficulty" style="margin-left: 8px; width: 120px;">
               <option value="EASY">쉬움</option>
               <option value="NORMAL" selected>보통</option>
@@ -55,7 +54,7 @@
           </button>
         </div>
       </div>
-      
+
       <ul id="room-list" class="room-list-container"></ul>
       <p id="lobby-status" class="muted"></p>
     </section>
@@ -178,7 +177,7 @@
         </div>
       </div>
     </section>
-    
+
     <section id="view-my-characters">
         <h1 class="page-title">내 신(Shin)</h1>
         <div class="toolbar">
@@ -265,5 +264,16 @@
 
   <script src="./js/firebase-config.js"></script>
   <script type="module" src="./js/app.js"></script>
-</body>
+
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>
+    // URL 파라미터에 debug=true가 있거나, 로컬 환경일 때만 eruda 활성화
+    const urlParams = new URLSearchParams(window.location.search);
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (urlParams.get('debug') === 'true' || isLocal) {
+      eruda.init();
+      console.log('Eruda debug console activated.');
+    }
+  </script>
+  </body>
 </html>
