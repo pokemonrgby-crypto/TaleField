@@ -6,6 +6,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -31,11 +32,37 @@ export const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 export const ts = serverTimestamp;
 const provider = new GoogleAuthProvider();
 
+// 리다이렉트 결과 처리 (페이지 로드 시 자동 실행)
+getRedirectResult(auth)
+  .then((result) => {
+    if (result) {
+      console.log("Google 로그인 성공:", result.user.email);
+    }
+  })
+  .catch((error) => {
+    console.error("Google 로그인 리다이렉트 오류:", error);
+    // 사용자에게 오류 표시
+    if (error.code === 'auth/popup-blocked') {
+      alert('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
+    } else if (error.code === 'auth/popup-closed-by-user') {
+      // 사용자가 팝업을 닫은 경우는 무시
+    } else {
+      alert(`로그인 오류: ${error.message}`);
+    }
+  });
+
 export async function signInWithGoogle() {
   try {
-    return await signInWithPopup(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    console.log("Google 로그인 성공 (팝업):", result.user.email);
+    return result;
   } catch (e) {
-    return signInWithRedirect(auth, provider);
+    console.log("팝업 로그인 실패, 리다이렉트로 전환:", e.code);
+    // 팝업이 차단된 경우에만 리다이렉트 사용
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
+      return signInWithRedirect(auth, provider);
+    }
+    throw e;
   }
 }
 export function signOutUser() { return signOut(auth); }

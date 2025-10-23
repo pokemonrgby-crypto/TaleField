@@ -1224,35 +1224,110 @@ export const startGame = functions
             if (isGodFieldMode) {
                 // === GodField 모드 ===
                 // 1. 모든 플레이어의 신과 성물 정보 가져오기
-                const shinPromises = roomData.players.map(p => db.doc(`shin/${p.shinId}`).get());
+                const shinPromises = roomData.players.map(p => {
+                    // 봇인 경우 bot-config의 BOT_SHIN 사용
+                    if (p.isBot) {
+                        return Promise.resolve({ exists: true, data: () => null }); // null을 반환하여 나중에 BOT_SHIN 사용
+                    }
+                    return db.doc(`shin/${p.shinId}`).get();
+                });
                 const artifactPromises = roomData.players.map(p => {
+                    // 봇인 경우 빈 배열 반환 (bot deck은 나중에 추가)
+                    if (p.isBot) {
+                        return Promise.resolve({ empty: true, docs: [] });
+                    }
                     return db.collection('artifacts').where('ownerUid', '==', p.uid).get();
                 });
                 
                 const shinSnaps = await Promise.all(shinPromises);
                 const artifactSnaps = await Promise.all(artifactPromises);
 
-                const shins = shinSnaps.map(snap => snap.data());
-                const allArtifacts = artifactSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+                const shins = shinSnaps.map((snap, idx) => {
+                    if (roomData.players[idx].isBot) {
+                        // BOT_SHIN을 하드코딩된 형태로 반환
+                        return {
+                            name: "천계의 수호자",
+                            description: "천계를 지키는 강력한 신. 빛과 어둠의 균형을 유지한다.",
+                            uniqueMiracles: [
+                                {
+                                    name: "신성한 보호막",
+                                    cardType: "miracle",
+                                    attribute: "光",
+                                    text: "신성한 빛으로 자신을 보호하여 체력과 마력을 동시에 회복한다.",
+                                    stats: { mpCost: 6 },
+                                    dsl: [
+                                        { op: "heal", amount: 12, target_stat: "hp", target: "caster" },
+                                        { op: "heal", amount: 5, target_stat: "mp", target: "caster" }
+                                    ]
+                                },
+                                {
+                                    name: "심판의 낙뢰",
+                                    cardType: "miracle",
+                                    attribute: "光",
+                                    text: "하늘에서 낙뢰를 떨어뜨려 적에게 강력한 피해를 입힌다.",
+                                    stats: { mpCost: 12 },
+                                    dsl: [
+                                        { op: "damage", amount: 25, attribute: "光", target: "enemy" }
+                                    ]
+                                }
+                            ]
+                        };
+                    }
+                    return snap.data();
+                });
+                const allArtifacts = artifactSnaps.flatMap((snap, idx) => {
+                    if (roomData.players[idx].isBot) {
+                        // BOT_DECK 반환 (7개 선택)
+                        return [
+                            { id: 'bot_weapon_1', name: "천계의 검", cardType: "weapon", attribute: "光", text: "빛의 힘이 깃든 신성한 검.", stats: { attack: 12, durability: 3 }, dsl: [{ op: "damage", amount: 12, attribute: "光", target: "enemy" }] },
+                            { id: 'bot_weapon_2', name: "화염의 창", cardType: "weapon", attribute: "火", text: "불꽃이 타오르는 창.", stats: { attack: 10, durability: 2 }, dsl: [{ op: "damage", amount: 10, attribute: "火", target: "enemy" }] },
+                            { id: 'bot_armor_1', name: "천계의 방패", cardType: "armor", attribute: "無", text: "신들의 축복이 깃든 방패.", stats: { defense: 8 }, dsl: [{ op: "modify_stat", target_stat: "hp", amount: 5, target: "caster" }] },
+                            { id: 'bot_item_1', name: "생명의 물약", cardType: "item", attribute: "無", text: "체력을 회복시켜주는 신비한 물약.", stats: {}, dsl: [{ op: "heal", amount: 15, target_stat: "hp", target: "caster" }] },
+                            { id: 'bot_item_2', name: "마나의 결정", cardType: "item", attribute: "無", text: "마력을 회복시켜주는 푸른 결정.", stats: {}, dsl: [{ op: "heal", amount: 10, target_stat: "mp", target: "caster" }] },
+                            { id: 'bot_miracle_1', name: "천벌", cardType: "miracle", attribute: "光", text: "하늘에서 내려오는 신의 심판.", stats: { mpCost: 8 }, dsl: [{ op: "damage", amount: 15, attribute: "光", target: "enemy" }] },
+                            { id: 'bot_miracle_2', name: "치유의 기적", cardType: "miracle", attribute: "無", text: "신의 은총으로 상처를 치유한다.", stats: { mpCost: 5 }, dsl: [{ op: "heal", amount: 20, target_stat: "hp", target: "caster" }] }
+                        ];
+                    }
+                    return snap.docs.map(d => d.data());
+                });
                 
                 // 2. 공용 덱 생성 및 셔플 (각 플레이어가 제출한 7장의 성물)
                 roomData.players.forEach(p => {
-                    const selected = new Set(p.selectedArtifactIds);
-                    const playerArtifacts = allArtifacts.filter(a => selected.has(a.id));
-                    playerArtifacts.forEach(artifact => {
-                        commonDeck.push({
-                            instanceId: `${artifact.id}_${Math.random().toString(36).substr(2, 9)}`,
-                            artifactId: artifact.id,
-                            ownerUid: p.uid,
-                            cardType: artifact.cardType,
-                            name: artifact.name,
-                            attribute: artifact.attribute,
-                            text: artifact.text,
-                            stats: artifact.stats || {},
-                            dsl: artifact.dsl,
-                            disasterToApply: artifact.disasterToApply
+                    if (p.isBot) {
+                        // 봇의 경우 미리 정의된 7개 카드 추가
+                        const botCards = allArtifacts.filter(a => a.id && a.id.startsWith('bot_'));
+                        botCards.forEach(artifact => {
+                            commonDeck.push({
+                                instanceId: `${artifact.id}_${Math.random().toString(36).substr(2, 9)}`,
+                                artifactId: artifact.id,
+                                ownerUid: p.uid,
+                                cardType: artifact.cardType,
+                                name: artifact.name,
+                                attribute: artifact.attribute,
+                                text: artifact.text,
+                                stats: artifact.stats || {},
+                                dsl: artifact.dsl,
+                                disasterToApply: artifact.disasterToApply
+                            });
                         });
-                    });
+                    } else {
+                        const selected = new Set(p.selectedArtifactIds);
+                        const playerArtifacts = allArtifacts.filter(a => selected.has(a.id));
+                        playerArtifacts.forEach(artifact => {
+                            commonDeck.push({
+                                instanceId: `${artifact.id}_${Math.random().toString(36).substr(2, 9)}`,
+                                artifactId: artifact.id,
+                                ownerUid: p.uid,
+                                cardType: artifact.cardType,
+                                name: artifact.name,
+                                attribute: artifact.attribute,
+                                text: artifact.text,
+                                stats: artifact.stats || {},
+                                dsl: artifact.dsl,
+                                disasterToApply: artifact.disasterToApply
+                            });
+                        });
+                    }
                 });
                 commonDeck.sort(() => Math.random() - 0.5); // 셔플
 
@@ -1264,6 +1339,7 @@ export const startGame = functions
                     matchPlayers[p.uid] = {
                         uid: p.uid,
                         nickname: p.nickname,
+                        isBot: p.isBot || false,
                         hp: 40, // GodField 시작 HP
                         mp: 10, // GodField 시작 MP
                         gold: 20, // GodField 시작 Gold
@@ -1493,8 +1569,18 @@ export const leaveRoom = functions
             const roomData = roomSnap.data();
             const players = roomData.players.filter(p => p.uid !== uid);
 
+            // 실제 플레이어(봇이 아닌) 수를 계산
+            const realPlayers = players.filter(p => !p.isBot);
+
+            // 봇 방이고 실제 플레이어가 없으면 방 삭제
+            if (roomData.isBotRoom && realPlayers.length === 0) {
+                console.log(`봇 방 ${roomId}에서 마지막 플레이어가 나갔습니다. 방을 삭제합니다.`);
+                tx.delete(roomRef);
+                return;
+            }
+
+            // 모든 플레이어가 나갔으면 방 삭제
             if (players.length === 0) {
-                // 마지막 플레이어가 나가면 방 삭제
                 tx.delete(roomRef);
             } else {
                 const updateData = {
@@ -1502,11 +1588,12 @@ export const leaveRoom = functions
                     playerUids: FieldValue.arrayRemove(uid),
                     playerCount: FieldValue.increment(-1),
                 };
-                // 방장이 나갔을 경우, 다음 사람에게 방장 위임
+                // 방장이 나갔을 경우, 다음 실제 플레이어에게 방장 위임
                 if (roomData.hostUid === uid) {
-                    updateData.hostUid = players[0].uid;
-                    updateData.hostNickname = players[0].nickname;
-                    players[0].isHost = true;
+                    const nextHost = realPlayers.length > 0 ? realPlayers[0] : players[0];
+                    updateData.hostUid = nextHost.uid;
+                    updateData.hostNickname = nextHost.nickname;
+                    nextHost.isHost = true;
                 }
                 tx.update(roomRef, updateData);
             }
@@ -1528,8 +1615,9 @@ export const createBotRoom = functions
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
     
-    const { difficulty, title } = z.object({
+    const { difficulty, botCount, title } = z.object({
       difficulty: z.enum(['EASY', 'NORMAL', 'HARD']).default('NORMAL'),
+      botCount: z.number().int().min(1).max(7).default(1),
       title: z.string().min(2).max(50).default('봇 배틀')
     }).parse(data);
 
@@ -1540,38 +1628,47 @@ export const createBotRoom = functions
     }
     const nickname = profileSnap.data().nickname;
 
+    // 플레이어 배열 생성 (유저 1명 + 봇들)
+    const players = [
+      {
+        uid: uid,
+        nickname: nickname,
+        isHost: true,
+        ready: false,
+        isBot: false,
+        shinId: null,
+        selectedArtifactIds: []
+      }
+    ];
+
+    // 봇 플레이어 추가
+    for (let i = 0; i < botCount; i++) {
+      players.push({
+        uid: `bot_${i + 1}`,
+        nickname: `천계의 수호자 ${i + 1} (${difficulty})`,
+        isHost: false,
+        ready: true,
+        isBot: true,
+        shinId: 'bot_shin',
+        selectedArtifactIds: [] // 봇 덱은 매치 시작 시 자동 생성
+      });
+    }
+
     // 방 생성
     const roomRef = db.collection("rooms").doc();
     const roomData = {
-      title: `${title} (vs ${difficulty} Bot)`,
+      title: `${title} (${botCount}봇 vs 1인, ${difficulty})`,
       hostUid: uid,
       hostNickname: nickname,
       status: "waiting",
-      maxPlayers: 2,
+      maxPlayers: botCount + 1,
+      playerUids: [uid, ...Array.from({ length: botCount }, (_, i) => `bot_${i + 1}`)],
       isBotRoom: true,
       botDifficulty: difficulty,
-      players: [
-        {
-          uid: uid,
-          nickname: nickname,
-          isHost: true,
-          ready: false,
-          isBot: false,
-          shinId: null,
-          selectedArtifactIds: []
-        },
-        {
-          uid: 'bot_1',
-          nickname: `천계의 수호자 (${difficulty})`,
-          isHost: false,
-          ready: true,
-          isBot: true,
-          shinId: 'bot_shin',
-          selectedArtifactIds: [] // 봇 덱은 매치 시작 시 자동 생성
-        }
-      ],
+      botCount: botCount,
+      players: players,
       createdAt: FieldValue.serverTimestamp(),
-      playerCount: 2
+      playerCount: botCount + 1
     };
 
     await roomRef.set(roomData);
