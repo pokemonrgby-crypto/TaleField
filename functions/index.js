@@ -1493,8 +1493,18 @@ export const leaveRoom = functions
             const roomData = roomSnap.data();
             const players = roomData.players.filter(p => p.uid !== uid);
 
+            // 실제 플레이어(봇이 아닌) 수를 계산
+            const realPlayers = players.filter(p => !p.isBot);
+
+            // 봇 방이고 실제 플레이어가 없으면 방 삭제
+            if (roomData.isBotRoom && realPlayers.length === 0) {
+                console.log(`봇 방 ${roomId}에서 마지막 플레이어가 나갔습니다. 방을 삭제합니다.`);
+                tx.delete(roomRef);
+                return;
+            }
+
+            // 모든 플레이어가 나갔으면 방 삭제
             if (players.length === 0) {
-                // 마지막 플레이어가 나가면 방 삭제
                 tx.delete(roomRef);
             } else {
                 const updateData = {
@@ -1502,11 +1512,12 @@ export const leaveRoom = functions
                     playerUids: FieldValue.arrayRemove(uid),
                     playerCount: FieldValue.increment(-1),
                 };
-                // 방장이 나갔을 경우, 다음 사람에게 방장 위임
+                // 방장이 나갔을 경우, 다음 실제 플레이어에게 방장 위임
                 if (roomData.hostUid === uid) {
-                    updateData.hostUid = players[0].uid;
-                    updateData.hostNickname = players[0].nickname;
-                    players[0].isHost = true;
+                    const nextHost = realPlayers.length > 0 ? realPlayers[0] : players[0];
+                    updateData.hostUid = nextHost.uid;
+                    updateData.hostNickname = nextHost.nickname;
+                    nextHost.isHost = true;
                 }
                 tx.update(roomRef, updateData);
             }
@@ -1528,8 +1539,9 @@ export const createBotRoom = functions
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
     
-    const { difficulty, title } = z.object({
+    const { difficulty, botCount, title } = z.object({
       difficulty: z.enum(['EASY', 'NORMAL', 'HARD']).default('NORMAL'),
+      botCount: z.number().int().min(1).max(7).default(1),
       title: z.string().min(2).max(50).default('봇 배틀')
     }).parse(data);
 
@@ -1540,38 +1552,47 @@ export const createBotRoom = functions
     }
     const nickname = profileSnap.data().nickname;
 
+    // 플레이어 배열 생성 (유저 1명 + 봇들)
+    const players = [
+      {
+        uid: uid,
+        nickname: nickname,
+        isHost: true,
+        ready: false,
+        isBot: false,
+        shinId: null,
+        selectedArtifactIds: []
+      }
+    ];
+
+    // 봇 플레이어 추가
+    for (let i = 0; i < botCount; i++) {
+      players.push({
+        uid: `bot_${i + 1}`,
+        nickname: `천계의 수호자 ${i + 1} (${difficulty})`,
+        isHost: false,
+        ready: true,
+        isBot: true,
+        shinId: 'bot_shin',
+        selectedArtifactIds: [] // 봇 덱은 매치 시작 시 자동 생성
+      });
+    }
+
     // 방 생성
     const roomRef = db.collection("rooms").doc();
     const roomData = {
-      title: `${title} (vs ${difficulty} Bot)`,
+      title: `${title} (${botCount}봇 vs 1인, ${difficulty})`,
       hostUid: uid,
       hostNickname: nickname,
       status: "waiting",
-      maxPlayers: 2,
+      maxPlayers: botCount + 1,
+      playerUids: [uid, ...Array.from({ length: botCount }, (_, i) => `bot_${i + 1}`)],
       isBotRoom: true,
       botDifficulty: difficulty,
-      players: [
-        {
-          uid: uid,
-          nickname: nickname,
-          isHost: true,
-          ready: false,
-          isBot: false,
-          shinId: null,
-          selectedArtifactIds: []
-        },
-        {
-          uid: 'bot_1',
-          nickname: `천계의 수호자 (${difficulty})`,
-          isHost: false,
-          ready: true,
-          isBot: true,
-          shinId: 'bot_shin',
-          selectedArtifactIds: [] // 봇 덱은 매치 시작 시 자동 생성
-        }
-      ],
+      botCount: botCount,
+      players: players,
       createdAt: FieldValue.serverTimestamp(),
-      playerCount: 2
+      playerCount: botCount + 1
     };
 
     await roomRef.set(roomData);

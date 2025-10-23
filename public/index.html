@@ -39,8 +39,20 @@
 
       <div class="bot-battle-section" style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, rgba(124,77,255,0.1), rgba(0,212,255,0.1)); border: 1px solid var(--line-main); border-radius: var(--radius-lg);">
         <h3 style="margin-bottom: 12px; color: var(--accent-secondary);">🤖 봇 배틀 (솔로 플레이)</h3>
-        <p style="margin-bottom: 16px; color: var(--ink-dim);">AI 봇과 1:1 대결을 펼쳐보세요!</p>
+        <p style="margin-bottom: 16px; color: var(--ink-dim);">AI 봇과 대결을 펼쳐보세요!</p>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <label style="color: var(--ink-main);">
+            봇 개수:
+            <select id="bot-count" style="margin-left: 8px; width: 100px;">
+              <option value="1" selected>1개</option>
+              <option value="2">2개</option>
+              <option value="3">3개</option>
+              <option value="4">4개</option>
+              <option value="5">5개</option>
+              <option value="6">6개</option>
+              <option value="7">7개</option>
+            </select>
+          </label>
           <label style="color: var(--ink-main);">
             난이도:
             <select id="bot-difficulty" style="margin-left: 8px; width: 120px;">

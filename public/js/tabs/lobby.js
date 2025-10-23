@@ -8,6 +8,7 @@ const $ = (q) => document.querySelector(q);
 const createRoomBtn = $("#btn-create-room");
 const createBotRoomBtn = $("#btn-create-bot-room");
 const botDifficultySelect = $("#bot-difficulty");
+const botCountSelect = $("#bot-count");
 const roomTitleEl = $("#room-title-input");
 const roomListEl = $("#room-list");
 const lobbyStatusEl = $("#lobby-status");
@@ -70,11 +71,13 @@ async function handleCreateBotRoom() {
     if (createBotRoomBtn.disabled) return;
     
     const difficulty = botDifficultySelect.value || 'NORMAL';
+    const botCount = parseInt(botCountSelect?.value || '1', 10);
     
     createBotRoomBtn.disabled = true;
     try {
         const result = await callCreateBotRoom({ 
             difficulty, 
+            botCount,
             title: '봇 배틀' 
         });
         if (result.ok && result.roomId) {
