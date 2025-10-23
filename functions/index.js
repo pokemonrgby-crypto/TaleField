@@ -13,7 +13,7 @@ import { processStack } from "./src/engine.js";
 
 const db = getFirestore();
 
-const GEMINI_API_KEY = functions.params.defineSecret("GEMINI_API_KEY");
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = "gemini-2.5-flash";
 const DAILY_ARTIFACT_LIMIT = 150; // 성물 생성 제한
 const DAILY_SHIN_LIMIT = 30;  // 신 생성 제한
@@ -259,7 +259,7 @@ function sanitizeShin(shin) {
 // --- 신(Shin) 생성 함수 ---
 export const genShin = functions
   .region("asia-northeast3")
-  .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 90 })
+  .runWith({ timeoutSeconds: 90 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
@@ -280,7 +280,7 @@ export const genShin = functions
     });
 
     const { prompt, temperature } = GenShinReqSchema.parse(data);
-    const apiKey = GEMINI_API_KEY.value();
+    const apiKey = GEMINI_API_KEY;
     
 const system =
 `당신은 차기 지구신 후보를 후원하는 상급신입니다. 사용자의 아이디어를 받아, 예언자에게 강력한 가호를 내려줄 '신'과 그의 '고유 기적'을 JSON으로 디자인하십시오.
@@ -366,11 +366,11 @@ const system =
 // --- 성물(Artifact) 생성 함수 ---
 export const genArtifact = functions
   .region("asia-northeast3")
-  .runWith({ secrets: [GEMINI_API_KEY], timeoutSeconds: 60 })
+  .runWith({ timeoutSeconds: 60 })
   .https.onCall(async (data, context) => {
     if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = context.auth.uid;
-    const apiKey = GEMINI_API_KEY.value();
+    const apiKey = GEMINI_API_KEY;
     const params = GenArtifactReqSchema.parse(data);
 
     const profileRef = db.doc(`profiles/${uid}`);
