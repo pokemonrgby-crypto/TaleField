@@ -7,11 +7,8 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # Job 1: 빌드 및 시크릿 설정
-  build_and_set_secrets:
+  build_and_deploy:
     runs-on: ubuntu-latest
-    outputs: # 다음 Job에서 functions 폴더 유무를 알 수 있도록 출력 설정
-      functions_exist: ${{ steps.check_functions.outputs.exists }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -21,10 +18,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
-
-      # ... (기존 firebase-config.js 생성 및 시크릿 검증 단계는 동일) ...
       - name: Validate Firebase secrets (fail if any is missing)
         run: |
           check() { [ -n "$1" ] || { echo "::error::Missing secret $2"; exit 1; }; }
@@ -38,53 +31,6 @@ jobs:
           check "${{ secrets.FIREBASE_PROJECT_ID }}" FIREBASE_PROJECT_ID
           check "${{ secrets.GEMINI_API_KEY }}" GEMINI_API_KEY
 
-      - name: Check if functions directory exists # functions 폴더 유무 확인 단계
-        id: check_functions
-        run: |
-          if [ -d "functions" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Install Functions deps
-        if: steps.check_functions.outputs.exists == 'true' # functions 폴더가 있을 때만 실행
-        run: cd functions && npm install
-
-      - name: Authenticate to Google Cloud
-        uses: 'google-github-actions/auth@v2'
-        with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-
-      - name: Set Firebase Functions secrets
-        if: steps.check_functions.outputs.exists == 'true' # functions 폴더가 있을 때만 실행
-        env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          echo "Setting GEMINI_API_KEY secret..."
-          # || true 를 추가하여 이미 시크릿 버전이 있어도 오류로 중단되지 않게 함
-          echo "$GEMINI_API_KEY" | firebase functions:secrets:set GEMINI_API_KEY --project "$FIREBASE_PROJECT_ID" --force || true
-          # 새 버전 액세스 (선택 사항, 전파를 돕기 위함)
-          firebase functions:secrets:access GEMINI_API_KEY --project "$FIREBASE_PROJECT_ID" || true
-
-  # Job 2: 배포 (Job 1 완료 후 실행)
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build_and_set_secrets # Job 1에 의존
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
-
-      # firebase-config.js 생성은 배포 Job에서도 필요할 수 있음 (Hosting 배포 시)
       - name: Create firebase-config.js from secrets
         run: |
           mkdir -p public
@@ -99,23 +45,24 @@ jobs:
           };
           EOF
 
-      - name: Authenticate to Google Cloud
-        uses: 'google-github-actions/auth@v2'
-        with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - name: Check if functions directory exists
+        id: check_functions
+        run: |
+          if [ -d "functions" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
-      # Functions 의존성 설치는 배포 Job에서도 필요
-      - name: Install Functions deps
-        if: needs.build_and_set_secrets.outputs.functions_exist == 'true'
+      - name: Install Functions dependencies
+        if: steps.check_functions.outputs.exists == 'true'
         run: cd functions && npm install
 
       - name: Deploy to Firebase
+        uses: w9jds/firebase-action@master
+        with:
+          args: deploy --only ${{ steps.check_functions.outputs.exists == 'true' && 'hosting,functions' || 'hosting' }} --project ${{ secrets.FIREBASE_PROJECT_ID }} --force
         env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        run: |
-          # Job 1의 출력(functions 폴더 유무)을 기반으로 배포 명령 결정
-          if [ "${{ needs.build_and_set_secrets.outputs.functions_exist }}" == "true" ]; then
-            firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
-          else
-            firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --force
-          fi
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
