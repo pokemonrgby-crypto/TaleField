@@ -198,6 +198,6 @@ Both v1 and v2 functions can coexist during migration if needed.
 
 ---
 
-**Migration Date:** 2025-10-25  
+**Migration Date:** October 2025  
 **Firebase Functions SDK Version:** 5.0.1  
 **Node.js Version:** 20
