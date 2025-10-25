@@ -132,7 +132,8 @@
                 
                 userInfoEl.style.display = 'block';
                 // Safely display user info using DOM methods (XSS-safe)
-                userDetailsEl.innerHTML = ''; // Clear previous content
+                // Clear previous content using DOM method
+                userDetailsEl.replaceChildren();
                 
                 // Email
                 const emailP = document.createElement('p');
@@ -177,7 +178,10 @@
                             img.style.height = '50px';
                             img.style.borderRadius = '50%';
                             img.style.marginLeft = '8px';
-                            img.onerror = function() { this.style.display = 'none'; };
+                            // Error handler using addEventListener for consistency
+                            img.addEventListener('error', function() {
+                                this.style.display = 'none';
+                            });
                             photoP.appendChild(img);
                         } else {
                             photoP.appendChild(document.createTextNode('없음 (신뢰할 수 없는 도메인)'));
