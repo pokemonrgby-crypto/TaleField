@@ -20,8 +20,8 @@ Google 로그인이 작동하려면 Firebase Console에서 다음 설정이 필�
 
 다음 도메인들을 추가해야 합니다:
 - `localhost` (로컬 개발용)
-- `peaceful-doodad-471301-s2.web.app` (Firebase 호스팅 기본 도메인)
-- `peaceful-doodad-471301-s2.firebaseapp.com` (Firebase 앱 도메인)
+- `YOUR_PROJECT_ID.web.app` (Firebase 호스팅 기본 도메인)
+- `YOUR_PROJECT_ID.firebaseapp.com` (Firebase 앱 도메인)
 - 커스텀 도메인이 있다면 추가
 
 #### 2. Google 로그인 활성화

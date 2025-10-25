@@ -135,7 +135,7 @@
                     <p><strong>이메일:</strong> ${user.email}</p>
                     <p><strong>표시 이름:</strong> ${user.displayName || '없음'}</p>
                     <p><strong>UID:</strong> ${user.uid}</p>
-                    <p><strong>프로필 사진:</strong> ${user.photoURL ? '<img src="' + user.photoURL + '" style="width:50px;height:50px;border-radius:50%;">' : '없음'}</p>
+                    <p><strong>프로필 사진:</strong> ${user.photoURL ? `<img src="${user.photoURL.replace(/[<>"']/g, '')}" style="width:50px;height:50px;border-radius:50%;" onerror="this.style.display='none'">` : '없음'}</p>
                 `;
             } else {
                 addLog('로그아웃 상태', 'info');

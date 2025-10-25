@@ -163,8 +163,8 @@ $("#btn-google").addEventListener("click", async () => {
 
 2. **Authentication > Settings > Authorized domains**
    - `localhost` (개발용)
-   - `peaceful-doodad-471301-s2.web.app`
-   - `peaceful-doodad-471301-s2.firebaseapp.com`
+   - `YOUR_PROJECT_ID.web.app`
+   - `YOUR_PROJECT_ID.firebaseapp.com`
    - 커스텀 도메인 (있는 경우)
 
 ## 테스트 방법
@@ -182,7 +182,7 @@ http://localhost:8000/test-login.html
 ### 프로덕션 테스트
 Firebase Hosting에 배포 후:
 ```
-https://peaceful-doodad-471301-s2.web.app/test-login.html
+https://YOUR_PROJECT_ID.web.app/test-login.html
 ```
 
 ## 예상 결과
