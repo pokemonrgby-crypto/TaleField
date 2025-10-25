@@ -6,6 +6,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
 import { z } from "zod";
 import fetch from "cross-fetch";
 
@@ -14,7 +15,7 @@ import { processStack } from "./src/engine.js";
 
 const db = getFirestore();
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 const GEMINI_MODEL = "gemini-2.5-flash";
 const DAILY_ARTIFACT_LIMIT = 150; // 성물 생성 제한
 const DAILY_SHIN_LIMIT = 30;  // 신 생성 제한
@@ -123,8 +124,8 @@ const GenShinReqSchema = z.object({
 
 
 // --- Gemini API 호출 헬퍼 ---
-async function callGemini(system, user, temperature, apiKey){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+async function callGemini(system, user, temperature){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY.value()}`;
 
   const body = {
     contents: [{ role:"user", parts:[{ text:`[SYSTEM]\n${system}\n\n[USER]\n${user}` }] }],
@@ -260,7 +261,8 @@ function sanitizeShin(shin) {
 // --- 신(Shin) 생성 함수 ---
 export const genShin = onCall({
   region: "asia-northeast3",
-  timeoutSeconds: 90
+  timeoutSeconds: 90,
+  secrets: [GEMINI_API_KEY]
 }, async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = request.auth.uid;
@@ -281,7 +283,6 @@ export const genShin = onCall({
     });
 
     const { prompt, temperature } = GenShinReqSchema.parse(request.data);
-    const apiKey = GEMINI_API_KEY;
     
 const system =
 `당신은 차기 지구신 후보를 후원하는 상급신입니다. 사용자의 아이디어를 받아, 예언자에게 강력한 가호를 내려줄 '신'과 그의 '고유 기적'을 JSON으로 디자인하십시오.
@@ -339,7 +340,7 @@ const system =
 출력은 오직 순수한 JSON 객체만 포함해야 합니다.`;
 
     const user = `{ "prompt": "${prompt}" }`;
-    let rawJson = await callGemini(system, user, temperature, apiKey);
+    let rawJson = await callGemini(system, user, temperature);
     let jsonText = extractFirstJsonObject(rawJson);
 
     try {
@@ -367,11 +368,11 @@ const system =
 // --- 성물(Artifact) 생성 함수 ---
 export const genArtifact = onCall({
   region: "asia-northeast3",
-  timeoutSeconds: 60
+  timeoutSeconds: 60,
+  secrets: [GEMINI_API_KEY]
 }, async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
     const uid = request.auth.uid;
-    const apiKey = GEMINI_API_KEY;
     const params = GenArtifactReqSchema.parse(request.data);
 
     const profileRef = db.doc(`profiles/${uid}`);
@@ -463,7 +464,7 @@ const system =
 
     const user = `{ "prompt": "${params.prompt}", "powerCap": ${params.powerCap} }`;
 
-    let rawJson = await callGemini(system, user, params.temperature, apiKey);
+    let rawJson = await callGemini(system, user, params.temperature);
     let jsonText = extractFirstJsonObject(rawJson);
 
     let artifactData;
