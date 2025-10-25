@@ -6,20 +6,21 @@
   <title>TaleField :: Reborn</title>
   <link rel="stylesheet" href="./style.css">
 
-<meta http-equiv="Content-Security-Policy" content="
-  default-src 'self';
-  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdn.jsdelivr.net;
-  connect-src 'self'
-    https://firestore.googleapis.com
-    https://identitytoolkit.googleapis.com
-    https://securetoken.googleapis.com
-    https://firebaseinstallations.googleapis.com
-    https://www.googleapis.com
-    https://asia-northeast3-peaceful-doodad-471301-s2.cloudfunctions.net;
-  frame-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com;
-  img-src 'self' data: https:;
-  style-src 'self' 'unsafe-inline';
-">
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdn.jsdelivr.net;
+    connect-src 'self'
+      https://firestore.googleapis.com
+      https://identitytoolkit.googleapis.com
+      https://securetoken.googleapis.com
+      https://firebaseinstallations.googleapis.com
+      https://www.googleapis.com
+      https://www.gstatic.com
+      https://asia-northeast3-peaceful-doodad-471301-s2.cloudfunctions.net;
+    frame-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com;
+    img-src 'self' data: https:;
+    style-src 'self' 'unsafe-inline';
+  ">
 </head>
 <body>
 
@@ -37,7 +38,8 @@
     </div>
   </div>
 
-  <main id="app" style="display: block;"> <section id="view-lobby" class="active">
+  <main id="app" style="display: block;">
+    <section id="view-lobby" class="active">
       <h1 class="page-title">로비</h1>
       <div class="toolbar">
         <input id="room-title-input" placeholder="방 제목 (2~20자)" maxlength="20" style="flex-grow:1;">
@@ -258,7 +260,8 @@
     </section>
   </main>
 
-  <nav class="bottom-nav"> <div class="bottom-nav__tabs">
+  <nav class="bottom-nav">
+    <div class="bottom-nav__tabs">
       <button data-tab="view-lobby" class="active">로비</button>
       <button data-tab="view-my-characters">내 신</button>
       <button data-tab="view-my-cards">내 성물</button>
