@@ -1,8 +1,8 @@
-// public/js/app.js
+// public/app.js
 import {
-  auth, authReady, signInWithGoogle, signOutUser,
-  needNickname, claimNickname, callGenCards, db
-} from "./firebase.js";
+  auth, signInWithGoogle, signOutUser,
+  needNickname, claimNickname, db
+} from "./js/firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
@@ -25,7 +25,18 @@ $$(".bottom-nav__tabs button").forEach(btn => {
 });
 
 // --- UI: 인증 버튼 ---
-$("#btn-google").addEventListener("click", signInWithGoogle);
+$("#btn-google").addEventListener("click", async () => {
+  try {
+    $("#btn-google").disabled = true;
+    $("#btn-google").textContent = "로그인 중...";
+    await signInWithGoogle();
+  } catch (error) {
+    console.error("로그인 실패:", error);
+  } finally {
+    $("#btn-google").disabled = false;
+    $("#btn-google").textContent = "Google 로그인";
+  }
+});
 $("#btn-logout").addEventListener("click", signOutUser);
 
 onAuthStateChanged(auth, user => {
