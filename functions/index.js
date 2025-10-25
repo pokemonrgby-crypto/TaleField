@@ -3,8 +3,9 @@ import { initializeApp } from "firebase-admin/app";
 initializeApp(); // 앱을 가장 먼저 초기화합니다.
 
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import * as functions from "firebase-functions";
-import { HttpsError } from "firebase-functions/v1/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { z } from "zod";
 import fetch from "cross-fetch";
 
@@ -257,12 +258,12 @@ function sanitizeShin(shin) {
 
 
 // --- 신(Shin) 생성 함수 ---
-export const genShin = functions
-  .region("asia-northeast3")
-  .runWith({ timeoutSeconds: 90 })
-  .https.onCall(async (data, context) => {
-    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-    const uid = context.auth.uid;
+export const genShin = onCall({
+  region: "asia-northeast3",
+  timeoutSeconds: 90
+}, async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const uid = request.auth.uid;
 
     const profileRef = db.doc(`profiles/${uid}`);
     await db.runTransaction(async (tx) => {
@@ -279,7 +280,7 @@ export const genShin = functions
         tx.set(profileRef, { lastShinCreationDate: today, shinCreationCount: count + 1 }, { merge: true });
     });
 
-    const { prompt, temperature } = GenShinReqSchema.parse(data);
+    const { prompt, temperature } = GenShinReqSchema.parse(request.data);
     const apiKey = GEMINI_API_KEY;
     
 const system =
@@ -364,14 +365,14 @@ const system =
 
 
 // --- 성물(Artifact) 생성 함수 ---
-export const genArtifact = functions
-  .region("asia-northeast3")
-  .runWith({ timeoutSeconds: 60 })
-  .https.onCall(async (data, context) => {
-    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-    const uid = context.auth.uid;
+export const genArtifact = onCall({
+  region: "asia-northeast3",
+  timeoutSeconds: 60
+}, async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const uid = request.auth.uid;
     const apiKey = GEMINI_API_KEY;
-    const params = GenArtifactReqSchema.parse(data);
+    const params = GenArtifactReqSchema.parse(request.data);
 
     const profileRef = db.doc(`profiles/${uid}`);
     await db.runTransaction(async (tx) => {
@@ -503,25 +504,25 @@ const system =
 // ===================================
 // ===== 전투 액션 함수들 (HTTPS) =====
 // ===================================
-export const apiPlayCard = functions.region("asia-northeast3").https.onCall(playCard);
-export const apiReact = functions.region("asia-northeast3").https.onCall(react);
-export const apiEndTurn = functions.region("asia-northeast3").https.onCall(endTurn);
+export const apiPlayCard = onCall({ region: "asia-northeast3" }, playCard);
+export const apiReact = onCall({ region: "asia-northeast3" }, react);
+export const apiEndTurn = onCall({ region: "asia-northeast3" }, endTurn);
 
 /**
  * GodField 핵심 게임 플레이 액션 처리 함수
  * ATTACK, DEFEND, PRAY 등의 행동을 처리합니다.
  */
-export const playerAction = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-        const { uid } = context.auth;
+export const playerAction = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = request.auth;
         
         const { matchId, actionType, payload } = z.object({
             matchId: z.string(),
             actionType: z.enum(["ATTACK", "DEFEND", "PRAY", "USE_ARTIFACT", "TRADE", "DISCARD"]),
             payload: z.any().optional()
-        }).parse(data);
+        }).parse(request.data);
 
         const matchRef = db.doc(`matches/${matchId}`);
 
@@ -979,15 +980,13 @@ export const genCharacter = genShin;
 /**
  * reaction phase가 끝난 후, resolve phase가 되면 자동으로 스택을 처리하는 트리거
  */
-export const onResolvePhase = functions.firestore
-    .document('matches/{matchId}')
-    .onUpdate(async (change, context) => {
-        const before = change.before.data();
-        const after = change.after.data();
+export const onResolvePhase = onDocumentUpdated('matches/{matchId}', async (event) => {
+        const before = event.data.before.data();
+        const after = event.data.after.data();
 
         // phase가 'resolve'로 변경되었을 때만 실행
         if (before.phase !== 'resolve' && after.phase === 'resolve') {
-            console.log(`[${context.params.matchId}] 스택 처리 시작...`);
+            console.log(`[${event.params.matchId}] 스택 처리 시작...`);
             
             const { newState, logs } = processStack(after);
 
@@ -996,7 +995,7 @@ const updateLogs = (logs && logs.length > 0)
   ? { logs: FieldValue.arrayUnion(...logs) }
   : {};
 
-await change.after.ref.update({
+await event.data.after.ref.update({
   ...newState,
   ...updateLogs,
   phase: 'end'
@@ -1009,14 +1008,12 @@ await change.after.ref.update({
  * reaction phase가 시작되면 7초 후에 resolve로 변경하는 스케줄링 함수 (간단한 버전)
  * 실제 프로덕션에서는 Cloud Tasks 등을 사용하는 것이 더 안정적입니다.
  */
-export const scheduleResolve = functions.firestore
-    .document('matches/{matchId}')
-    .onUpdate(async (change, context) => {
-        const before = change.before.data();
-        const after = change.after.data();
+export const scheduleResolve = onDocumentUpdated('matches/{matchId}', async (event) => {
+        const before = event.data.before.data();
+        const after = event.data.after.data();
 
         if (before.phase !== 'reaction' && after.phase === 'reaction') {
-            const matchId = context.params.matchId;
+            const matchId = event.params.matchId;
             // 7초 대기
             await new Promise(resolve => setTimeout(resolve, 7000));
             
@@ -1044,12 +1041,12 @@ const RoomSchema = z.object({
 /**
  * 방 생성 함수
  */
-export const createRoom = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-        const { uid } = context.auth;
-        const { title, maxPlayers } = RoomSchema.parse(data);
+export const createRoom = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = request.auth;
+        const { title, maxPlayers } = RoomSchema.parse(request.data);
 
         const profileSnap = await db.doc(`profiles/${uid}`).get();
         const nickname = profileSnap.data()?.nickname;
@@ -1100,12 +1097,12 @@ const SetPlayerReadySchema = z.object({
     ready: z.boolean(),
 });
 
-export const joinRoom = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-        const { uid } = context.auth;
-        const { roomId } = z.object({ roomId: z.string() }).parse(data);
+export const joinRoom = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = request.auth;
+        const { roomId } = z.object({ roomId: z.string() }).parse(request.data);
 
         const profileSnap = await db.doc(`profiles/${uid}`).get();
         const nickname = profileSnap.data()?.nickname;
@@ -1147,12 +1144,12 @@ export const joinRoom = functions
 
 
 
-export const setPlayerReady = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-        const { uid } = context.auth;
-        const { roomId, shinId, selectedArtifactIds, characterId, selectedCardIds, selectedSkills, ready } = SetPlayerReadySchema.parse(data);
+export const setPlayerReady = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = request.auth;
+        const { roomId, shinId, selectedArtifactIds, characterId, selectedCardIds, selectedSkills, ready } = SetPlayerReadySchema.parse(request.data);
 
         const roomRef = db.doc(`rooms/${roomId}`);
 
@@ -1195,12 +1192,12 @@ export const setPlayerReady = functions
 /**
  * 게임 시작 함수 (GodField)
  */
-export const startGame = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-        const { uid } = context.auth;
-        const { roomId } = z.object({ roomId: z.string() }).parse(data);
+export const startGame = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = request.auth;
+        const { roomId } = z.object({ roomId: z.string() }).parse(request.data);
 
         const roomRef = db.doc(`rooms/${roomId}`);
         const matchRef = db.collection('matches').doc();
@@ -1424,7 +1421,7 @@ export const startGame = functions
  * 빈 방 자동 삭제 (스케줄링)
  * 매 1시간마다 실행
  */
-export const cleanupEmptyRooms = functions.pubsub.schedule('every 60 minutes').onRun(async (context) => {
+export const cleanupEmptyRooms = onSchedule('every 60 minutes', async (event) => {
     const roomsRef = db.collection('rooms');
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
@@ -1452,14 +1449,14 @@ export const cleanupEmptyRooms = functions.pubsub.schedule('every 60 minutes').o
 /**
  * 카드 삭제 함수 (하위 호환)
  */
-export const deleteCard = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) {
+export const deleteCard = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) {
             throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         }
-        const { uid } = context.auth;
-        const { cardId } = z.object({ cardId: z.string() }).parse(data);
+        const { uid } = request.auth;
+        const { cardId } = z.object({ cardId: z.string() }).parse(request.data);
 
         const cardRef = db.doc(`userCards/${cardId}`);
         const cardSnap = await cardRef.get();
@@ -1486,14 +1483,14 @@ export const deleteCard = functions
 /**
  * 성물 삭제 함수
  */
-export const deleteArtifact = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) {
+export const deleteArtifact = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) {
             throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         }
-        const { uid } = context.auth;
-        const { artifactId } = z.object({ artifactId: z.string() }).parse(data);
+        const { uid } = request.auth;
+        const { artifactId } = z.object({ artifactId: z.string() }).parse(request.data);
 
         const artifactRef = db.doc(`artifacts/${artifactId}`);
         const artifactSnap = await artifactRef.get();
@@ -1519,14 +1516,14 @@ export const deleteArtifact = functions
 /**
  * 신 삭제 함수
  */
-export const deleteShin = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) {
+export const deleteShin = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) {
             throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
         }
-        const { uid } = context.auth;
-        const { shinId } = z.object({ shinId: z.string() }).parse(data);
+        const { uid } = request.auth;
+        const { shinId } = z.object({ shinId: z.string() }).parse(request.data);
 
         const shinRef = db.doc(`shin/${shinId}`);
         const shinSnap = await shinRef.get();
@@ -1553,12 +1550,12 @@ export const deleteShin = functions
 /**
  * 방 나가기 함수
  */
-export const leaveRoom = functions
-    .region("asia-northeast3")
-    .https.onCall(async (data, context) => {
-        if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-        const { uid } = context.auth;
-        const { roomId } = z.object({ roomId: z.string() }).parse(data);
+export const leaveRoom = onCall({
+    region: "asia-northeast3"
+}, async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+        const { uid } = request.auth;
+        const { roomId } = z.object({ roomId: z.string() }).parse(request.data);
 
         const roomRef = db.doc(`rooms/${roomId}`);
 
@@ -1609,17 +1606,17 @@ export const leaveRoom = functions
 /**
  * 봇과의 솔로 플레이를 위한 방 생성
  */
-export const createBotRoom = functions
-  .region("asia-northeast3")
-  .https.onCall(async (data, context) => {
-    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-    const uid = context.auth.uid;
+export const createBotRoom = onCall({
+  region: "asia-northeast3"
+}, async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const uid = request.auth.uid;
     
     const { difficulty, botCount, title } = z.object({
       difficulty: z.enum(['EASY', 'NORMAL', 'HARD']).default('NORMAL'),
       botCount: z.number().int().min(1).max(7).default(1),
       title: z.string().min(2).max(50).default('봇 배틀')
-    }).parse(data);
+    }).parse(request.data);
 
     // 프로필에서 닉네임 가져오기
     const profileSnap = await db.doc(`profiles/${uid}`).get();
@@ -1679,12 +1676,12 @@ export const createBotRoom = functions
 /**
  * 봇 턴 실행 (매치에서 봇 턴이 되면 자동 호출)
  */
-export const executeBotTurn = functions
-  .region("asia-northeast3")
-  .https.onCall(async (data, context) => {
+export const executeBotTurn = onCall({
+  region: "asia-northeast3"
+}, async (request) => {
     const { matchId } = z.object({
       matchId: z.string()
-    }).parse(data);
+    }).parse(request.data);
 
     const matchRef = db.doc(`matches/${matchId}`);
     const matchSnap = await matchRef.get();
