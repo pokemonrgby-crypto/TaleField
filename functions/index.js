@@ -980,7 +980,10 @@ export const genCharacter = genShin;
 /**
  * reaction phase가 끝난 후, resolve phase가 되면 자동으로 스택을 처리하는 트리거
  */
-export const onResolvePhase = onDocumentUpdated('matches/{matchId}', async (event) => {
+export const onResolvePhase = onDocumentUpdated({
+    document: 'matches/{matchId}',
+    region: 'asia-northeast3'
+}, async (event) => {
         const before = event.data.before.data();
         const after = event.data.after.data();
 
@@ -1008,7 +1011,10 @@ await event.data.after.ref.update({
  * reaction phase가 시작되면 7초 후에 resolve로 변경하는 스케줄링 함수 (간단한 버전)
  * 실제 프로덕션에서는 Cloud Tasks 등을 사용하는 것이 더 안정적입니다.
  */
-export const scheduleResolve = onDocumentUpdated('matches/{matchId}', async (event) => {
+export const scheduleResolve = onDocumentUpdated({
+    document: 'matches/{matchId}',
+    region: 'asia-northeast3'
+}, async (event) => {
         const before = event.data.before.data();
         const after = event.data.after.data();
 
@@ -1421,7 +1427,10 @@ export const startGame = onCall({
  * 빈 방 자동 삭제 (스케줄링)
  * 매 1시간마다 실행
  */
-export const cleanupEmptyRooms = onSchedule('every 60 minutes', async (event) => {
+export const cleanupEmptyRooms = onSchedule({
+    schedule: 'every 60 minutes',
+    region: 'asia-northeast3'
+}, async (event) => {
     const roomsRef = db.collection('rooms');
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);

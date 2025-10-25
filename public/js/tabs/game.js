@@ -27,7 +27,7 @@ export function initGameView(){
   reactQ.innerHTML = `<span class="hint">(비어있음)</span>`;
 
   const app = getApp();
-  const fns = getFunctions(app);
+  const fns = getFunctions(app, "asia-northeast3");
 
   btnDraw?.addEventListener("click", async ()=>{
     if (!canUseMainActions()) return toast("지금은 드로우 불가(반응 창).");
