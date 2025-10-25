@@ -131,11 +131,31 @@
                 btnLogout.style.display = '';
                 
                 userInfoEl.style.display = 'block';
+                // Safely display user info
+                const email = user.email || 'N/A';
+                const displayName = user.displayName || '없음';
+                const uid = user.uid || 'N/A';
+                
+                // Profile photo with domain validation (Google photos only)
+                let photoHTML = '없음';
+                if (user.photoURL) {
+                    try {
+                        const photoUrl = new URL(user.photoURL);
+                        // Only allow Google profile photos
+                        if (photoUrl.hostname.endsWith('googleusercontent.com') || 
+                            photoUrl.hostname.endsWith('ggpht.com')) {
+                            photoHTML = `<img src="${photoUrl.href}" style="width:50px;height:50px;border-radius:50%;" onerror="this.style.display='none'" alt="프로필 사진">`;
+                        }
+                    } catch (e) {
+                        console.warn('Invalid photo URL:', e);
+                    }
+                }
+                
                 userDetailsEl.innerHTML = `
-                    <p><strong>이메일:</strong> ${user.email}</p>
-                    <p><strong>표시 이름:</strong> ${user.displayName || '없음'}</p>
-                    <p><strong>UID:</strong> ${user.uid}</p>
-                    <p><strong>프로필 사진:</strong> ${user.photoURL ? `<img src="${user.photoURL.replace(/[<>"']/g, '')}" style="width:50px;height:50px;border-radius:50%;" onerror="this.style.display='none'">` : '없음'}</p>
+                    <p><strong>이메일:</strong> ${email}</p>
+                    <p><strong>표시 이름:</strong> ${displayName}</p>
+                    <p><strong>UID:</strong> ${uid}</p>
+                    <p><strong>프로필 사진:</strong> ${photoHTML}</p>
                 `;
             } else {
                 addLog('로그아웃 상태', 'info');

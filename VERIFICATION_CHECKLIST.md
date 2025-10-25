@@ -24,7 +24,7 @@
 
 ### 테스트 서버 실행
 ```bash
-cd /home/runner/work/TaleField/TaleField/public
+cd public  # 또는 프로젝트의 public 디렉토리 경로
 python3 -m http.server 8000
 ```
 
