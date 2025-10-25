@@ -1,20 +1,20 @@
 // functions/src/actions.js
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { HttpsError } from "firebase-functions/v1/https";
+import { HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
 
 /**
  * 카드 사용 요청 처리 (메인 페이즈)
  */
-export async function playCard(data, context) {
+export async function playCard(request) {
     const db = getFirestore();
-    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-    const { uid } = context.auth;
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const { uid } = request.auth;
     const { matchId, cardId, targetUid } = z.object({
         matchId: z.string(),
         cardId: z.string(),
         targetUid: z.string().optional(),
-    }).parse(data);
+    }).parse(request.data);
 
     const matchRef = db.doc(`matches/${matchId}`);
     
@@ -62,15 +62,15 @@ export async function playCard(data, context) {
 /**
  * 반응 카드 사용 요청 처리 (리액션 페이즈)
  */
-export async function react(data, context) {
+export async function react(request) {
     const db = getFirestore();
-    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-    const { uid } = context.auth;
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const { uid } = request.auth;
     const { matchId, cardId, targetUid } = z.object({
         matchId: z.string(),
         cardId: z.string(),
         targetUid: z.string().optional(),
-    }).parse(data);
+    }).parse(request.data);
 
     const matchRef = db.doc(`matches/${matchId}`);
     
@@ -118,11 +118,11 @@ export async function react(data, context) {
 /**
  * 턴 종료 요청 처리
  */
-export async function endTurn(data, context) {
+export async function endTurn(request) {
     const db = getFirestore();
-    if (!context.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-    const { uid } = context.auth;
-    const { matchId } = z.object({ matchId: z.string() }).parse(data);
+    if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+    const { uid } = request.auth;
+    const { matchId } = z.object({ matchId: z.string() }).parse(request.data);
 
     const matchRef = db.doc(`matches/${matchId}`);
 
