@@ -131,32 +131,65 @@
                 btnLogout.style.display = '';
                 
                 userInfoEl.style.display = 'block';
-                // Safely display user info
-                const email = user.email || 'N/A';
-                const displayName = user.displayName || '없음';
-                const uid = user.uid || 'N/A';
+                // Safely display user info using DOM methods (XSS-safe)
+                userDetailsEl.innerHTML = ''; // Clear previous content
                 
-                // Profile photo with domain validation (Google photos only)
-                let photoHTML = '없음';
+                // Email
+                const emailP = document.createElement('p');
+                const emailStrong = document.createElement('strong');
+                emailStrong.textContent = '이메일: ';
+                emailP.appendChild(emailStrong);
+                emailP.appendChild(document.createTextNode(user.email || 'N/A'));
+                userDetailsEl.appendChild(emailP);
+                
+                // Display Name
+                const nameP = document.createElement('p');
+                const nameStrong = document.createElement('strong');
+                nameStrong.textContent = '표시 이름: ';
+                nameP.appendChild(nameStrong);
+                nameP.appendChild(document.createTextNode(user.displayName || '없음'));
+                userDetailsEl.appendChild(nameP);
+                
+                // UID
+                const uidP = document.createElement('p');
+                const uidStrong = document.createElement('strong');
+                uidStrong.textContent = 'UID: ';
+                uidP.appendChild(uidStrong);
+                uidP.appendChild(document.createTextNode(user.uid || 'N/A'));
+                userDetailsEl.appendChild(uidP);
+                
+                // Profile Photo (with domain validation)
+                const photoP = document.createElement('p');
+                const photoStrong = document.createElement('strong');
+                photoStrong.textContent = '프로필 사진: ';
+                photoP.appendChild(photoStrong);
+                
                 if (user.photoURL) {
                     try {
                         const photoUrl = new URL(user.photoURL);
                         // Only allow Google profile photos
                         if (photoUrl.hostname.endsWith('googleusercontent.com') || 
                             photoUrl.hostname.endsWith('ggpht.com')) {
-                            photoHTML = `<img src="${photoUrl.href}" style="width:50px;height:50px;border-radius:50%;" onerror="this.style.display='none'" alt="프로필 사진">`;
+                            const img = document.createElement('img');
+                            img.setAttribute('src', photoUrl.href);
+                            img.setAttribute('alt', '프로필 사진');
+                            img.style.width = '50px';
+                            img.style.height = '50px';
+                            img.style.borderRadius = '50%';
+                            img.style.marginLeft = '8px';
+                            img.onerror = function() { this.style.display = 'none'; };
+                            photoP.appendChild(img);
+                        } else {
+                            photoP.appendChild(document.createTextNode('없음 (신뢰할 수 없는 도메인)'));
                         }
                     } catch (e) {
                         console.warn('Invalid photo URL:', e);
+                        photoP.appendChild(document.createTextNode('없음 (잘못된 URL)'));
                     }
+                } else {
+                    photoP.appendChild(document.createTextNode('없음'));
                 }
-                
-                userDetailsEl.innerHTML = `
-                    <p><strong>이메일:</strong> ${email}</p>
-                    <p><strong>표시 이름:</strong> ${displayName}</p>
-                    <p><strong>UID:</strong> ${uid}</p>
-                    <p><strong>프로필 사진:</strong> ${photoHTML}</p>
-                `;
+                userDetailsEl.appendChild(photoP);
             } else {
                 addLog('로그아웃 상태', 'info');
                 statusEl.textContent = '상태: 로그아웃됨';
