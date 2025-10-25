@@ -30,42 +30,106 @@ const app = initializeApp(cfg);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 export const ts = serverTimestamp;
+
+// GoogleAuthProvider 설정 개선 (2024 최신 권장사항)
 const provider = new GoogleAuthProvider();
+// 사용자 선택 화면 강제 표시 (계정 전환 용이)
+provider.setCustomParameters({
+  prompt: 'select_account'
+});
+// 추가 OAuth 스코프 (선택사항)
+provider.addScope('profile');
+provider.addScope('email');
 
 // 리다이렉트 결과 처리 (페이지 로드 시 자동 실행)
+// 2024 업데이트: 리다이렉트 후 복귀 시 로그인 완료 처리
 getRedirectResult(auth)
   .then((result) => {
     if (result) {
-      console.log("Google 로그인 성공:", result.user.email);
+      console.log("✅ Google 로그인 성공 (리다이렉트):", result.user.email);
+      // 로그인 성공 시 시각적 피드백
+      showLoginSuccess(result.user);
     }
   })
   .catch((error) => {
-    console.error("Google 로그인 리다이렉트 오류:", error);
-    // 사용자에게 오류 표시
-    if (error.code === 'auth/popup-blocked') {
-      alert('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
-    } else if (error.code === 'auth/popup-closed-by-user') {
-      // 사용자가 팝업을 닫은 경우는 무시
-    } else {
-      alert(`로그인 오류: ${error.message}`);
-    }
+    console.error("❌ Google 로그인 리다이렉트 오류:", error);
+    // 더 상세한 오류 처리
+    handleAuthError(error);
   });
 
+// 개선된 Google 로그인 함수 (2024 최신 권장사항)
 export async function signInWithGoogle() {
   try {
+    console.log("🔐 Google 로그인 시도 (팝업 방식)...");
     const result = await signInWithPopup(auth, provider);
-    console.log("Google 로그인 성공 (팝업):", result.user.email);
+    console.log("✅ Google 로그인 성공 (팝업):", result.user.email);
+    showLoginSuccess(result.user);
     return result;
   } catch (e) {
-    console.log("팝업 로그인 실패, 리다이렉트로 전환:", e.code);
-    // 팝업이 차단된 경우에만 리다이렉트 사용
-    if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
+    console.warn("⚠️ 팝업 로그인 실패:", e.code, e.message);
+    
+    // 팝업 차단 또는 사용자가 닫은 경우 리다이렉트로 전환
+    if (e.code === 'auth/popup-blocked' || 
+        e.code === 'auth/cancelled-popup-request' ||
+        e.code === 'auth/popup-closed-by-user') {
+      console.log("🔄 리다이렉트 방식으로 전환합니다...");
+      // 리다이렉트 전 로딩 표시
+      showLoginLoading();
       return signInWithRedirect(auth, provider);
     }
+    
+    // 기타 오류 처리
+    handleAuthError(e);
     throw e;
   }
 }
 export function signOutUser() { return signOut(auth); }
+
+// 로그인 성공 시 시각적 피드백
+function showLoginSuccess(user) {
+  const displayName = user.displayName || user.email;
+  // 간단한 알림 표시 (실제로는 UI 개선 가능)
+  console.log(`👋 환영합니다, ${displayName}님!`);
+}
+
+// 로그인 진행 중 표시
+function showLoginLoading() {
+  console.log("⏳ 로그인 처리 중...");
+  // 필요 시 로딩 스피너 표시
+}
+
+// 통합 오류 처리 함수
+function handleAuthError(error) {
+  let userMessage = '로그인 중 오류가 발생했습니다.';
+  
+  switch(error.code) {
+    case 'auth/popup-blocked':
+      userMessage = '팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용하거나 페이지를 새로고침 후 다시 시도해주세요.';
+      break;
+    case 'auth/popup-closed-by-user':
+      // 사용자가 의도적으로 닫은 경우 - 조용히 처리
+      console.log("ℹ️ 사용자가 로그인 창을 닫았습니다.");
+      return;
+    case 'auth/cancelled-popup-request':
+      // 중복 팝업 요청 취소 - 조용히 처리
+      console.log("ℹ️ 이전 로그인 요청이 취소되었습니다.");
+      return;
+    case 'auth/unauthorized-domain':
+      userMessage = '인증되지 않은 도메인입니다. Firebase Console에서 도메인을 추가해주세요.';
+      break;
+    case 'auth/network-request-failed':
+      userMessage = '네트워크 연결을 확인해주세요.';
+      break;
+    case 'auth/too-many-requests':
+      userMessage = '너무 많은 요청이 발생했습니다. 잠시 후 다시 시도해주세요.';
+      break;
+    default:
+      userMessage = `로그인 오류: ${error.message}`;
+  }
+  
+  console.error('🚨 인증 오류:', error.code, error.message);
+  alert(userMessage);
+}
 
 // ---------- 닉네임 API ----------
 const profileRef = (uid) => doc(db, "profiles", uid);

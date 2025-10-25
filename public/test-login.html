@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google 로그인 테스트</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #357ae8;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .user-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        .log {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #263238;
+            color: #aed581;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .log div {
+            margin: 2px 0;
+        }
+        .success { color: #4caf50; }
+        .error { color: #f44336; }
+        .warning { color: #ff9800; }
+        .info { color: #2196f3; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔐 Google 로그인 테스트</h1>
+        <p>TaleField 프로젝트의 Google 로그인 기능을 테스트합니다.</p>
+        
+        <div class="status" id="status">
+            상태: 초기화 중...
+        </div>
+
+        <div>
+            <button id="btn-login" disabled>Google 로그인</button>
+            <button id="btn-logout" style="display:none;">로그아웃</button>
+        </div>
+
+        <div id="user-info" class="user-info" style="display:none;">
+            <h3>사용자 정보</h3>
+            <div id="user-details"></div>
+        </div>
+
+        <h3>실시간 로그</h3>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script src="./js/firebase-config.js"></script>
+    <script type="module">
+        import { auth, signInWithGoogle, signOutUser } from './js/firebase.js';
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+        const statusEl = document.getElementById('status');
+        const btnLogin = document.getElementById('btn-login');
+        const btnLogout = document.getElementById('btn-logout');
+        const userInfoEl = document.getElementById('user-info');
+        const userDetailsEl = document.getElementById('user-details');
+        const logEl = document.getElementById('log');
+
+        // 로그 함수
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            const time = new Date().toLocaleTimeString();
+            div.textContent = `[${time}] ${message}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        addLog('Firebase 초기화 중...', 'info');
+
+        // 인증 상태 변경 감지
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                addLog(`✅ 로그인 성공: ${user.email}`, 'success');
+                statusEl.textContent = '상태: 로그인됨';
+                statusEl.style.background = '#e8f5e9';
+                statusEl.style.color = '#2e7d32';
+                
+                btnLogin.style.display = 'none';
+                btnLogout.style.display = '';
+                
+                userInfoEl.style.display = 'block';
+                // Safely display user info using DOM methods (XSS-safe)
+                // Clear previous content using DOM method
+                userDetailsEl.replaceChildren();
+                
+                // Email
+                const emailP = document.createElement('p');
+                const emailStrong = document.createElement('strong');
+                emailStrong.textContent = '이메일: ';
+                emailP.appendChild(emailStrong);
+                emailP.appendChild(document.createTextNode(user.email || 'N/A'));
+                userDetailsEl.appendChild(emailP);
+                
+                // Display Name
+                const nameP = document.createElement('p');
+                const nameStrong = document.createElement('strong');
+                nameStrong.textContent = '표시 이름: ';
+                nameP.appendChild(nameStrong);
+                nameP.appendChild(document.createTextNode(user.displayName || '없음'));
+                userDetailsEl.appendChild(nameP);
+                
+                // UID
+                const uidP = document.createElement('p');
+                const uidStrong = document.createElement('strong');
+                uidStrong.textContent = 'UID: ';
+                uidP.appendChild(uidStrong);
+                uidP.appendChild(document.createTextNode(user.uid || 'N/A'));
+                userDetailsEl.appendChild(uidP);
+                
+                // Profile Photo (with domain validation)
+                const photoP = document.createElement('p');
+                const photoStrong = document.createElement('strong');
+                photoStrong.textContent = '프로필 사진: ';
+                photoP.appendChild(photoStrong);
+                
+                if (user.photoURL) {
+                    try {
+                        const photoUrl = new URL(user.photoURL);
+                        // Only allow Google profile photos
+                        if (photoUrl.hostname.endsWith('googleusercontent.com') || 
+                            photoUrl.hostname.endsWith('ggpht.com')) {
+                            const img = document.createElement('img');
+                            img.setAttribute('src', photoUrl.href);
+                            img.setAttribute('alt', '프로필 사진');
+                            img.style.width = '50px';
+                            img.style.height = '50px';
+                            img.style.borderRadius = '50%';
+                            img.style.marginLeft = '8px';
+                            // Error handler using addEventListener for consistency
+                            img.addEventListener('error', function() {
+                                this.style.display = 'none';
+                            });
+                            photoP.appendChild(img);
+                        } else {
+                            photoP.appendChild(document.createTextNode('없음 (신뢰할 수 없는 도메인)'));
+                        }
+                    } catch (e) {
+                        console.warn('Invalid photo URL:', e);
+                        photoP.appendChild(document.createTextNode('없음 (잘못된 URL)'));
+                    }
+                } else {
+                    photoP.appendChild(document.createTextNode('없음'));
+                }
+                userDetailsEl.appendChild(photoP);
+            } else {
+                addLog('로그아웃 상태', 'info');
+                statusEl.textContent = '상태: 로그아웃됨';
+                statusEl.style.background = '#e3f2fd';
+                statusEl.style.color = '#1976d2';
+                
+                btnLogin.style.display = '';
+                btnLogout.style.display = 'none';
+                btnLogin.disabled = false;
+                
+                userInfoEl.style.display = 'none';
+            }
+        });
+
+        // 로그인 버튼
+        btnLogin.addEventListener('click', async () => {
+            try {
+                addLog('Google 로그인 시도...', 'info');
+                btnLogin.disabled = true;
+                btnLogin.textContent = '로그인 중...';
+                await signInWithGoogle();
+                // onAuthStateChanged에서 처리됨
+            } catch (error) {
+                addLog(`❌ 로그인 실패: ${error.message}`, 'error');
+                console.error(error);
+            } finally {
+                btnLogin.disabled = false;
+                btnLogin.textContent = 'Google 로그인';
+            }
+        });
+
+        // 로그아웃 버튼
+        btnLogout.addEventListener('click', async () => {
+            try {
+                addLog('로그아웃 시도...', 'info');
+                await signOutUser();
+                addLog('✅ 로그아웃 완료', 'success');
+            } catch (error) {
+                addLog(`❌ 로그아웃 실패: ${error.message}`, 'error');
+                console.error(error);
+            }
+        });
+
+        addLog('✅ 앱 초기화 완료', 'success');
+    </script>
+</body>
+</html>
