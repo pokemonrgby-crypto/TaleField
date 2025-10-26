@@ -1099,7 +1099,7 @@ const SetPlayerReadySchema = z.object({
     selectedArtifactIds: z.array(z.string()).min(7).max(7).optional(),
     // 하위 호환성을 위해 유지
     characterId: z.string().optional(),
-    selectedCardIds: z.array(z.string()).min(5).max(10).optional(),
+    selectedCardIds: z.array(z.string()).min(5).max(15).optional(),
     selectedSkills: z.array(z.string()).optional(),
     ready: z.boolean(),
 });
@@ -1292,7 +1292,7 @@ export const startGame = onCall({
                             { id: 'bot_miracle_2', name: "치유의 기적", cardType: "miracle", attribute: "無", text: "신의 은총으로 상처를 치유한다.", stats: { mpCost: 5 }, dsl: [{ op: "heal", amount: 20, target_stat: "hp", target: "caster" }] }
                         ];
                     }
-                    return snap.docs.map(d => d.data());
+                    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 });
                 
                 // 2. 공용 덱 생성 및 셔플 (각 플레이어가 제출한 7장의 성물)
@@ -1365,8 +1365,8 @@ export const startGame = onCall({
                 const cardSnaps = await Promise.all(cardPromises);
                 const charSnaps = await Promise.all(charPromises);
 
-                const allCards = cardSnaps.flatMap(snap => snap.docs.map(d => d.data()));
-                const allChars = charSnaps.flatMap(snap => snap.docs.map(d => d.data()));
+                const allCards = cardSnaps.flatMap(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                const allChars = charSnaps.flatMap(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })));
                 
                 // 공용 덱 생성
                 roomData.players.forEach(p => {

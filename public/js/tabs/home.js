@@ -61,7 +61,7 @@ async function joinRoom(room){
   await setDoc(doc(db, "rooms", room.id, "players", state.user.uid), {
     uid: state.user.uid, nickname: `게스트-${state.user.uid.slice(0,5)}`, characterId: "god_hakuren", selectedCardIds: [], ready: false
   }, { merge:true });
-  toast("참여 완료! 카드 탭에서 5~10장 선택해줘.");
+  toast("참여 완료! 카드 탭에서 5~15장 선택해줘.");
 }
 
 // 방 목록 실시간
