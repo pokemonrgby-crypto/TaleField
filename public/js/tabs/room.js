@@ -265,7 +265,7 @@ function toggleCard(cardId) {
 
     const count = selectedCardIds.size;
     selectedCardCountEl.textContent = count;
-    if (count >= 5 && count <= 10) {
+    if (count >= 5 && count <= 15) {
         selectedCardCountEl.parentElement.classList.remove('danger');
     } else {
         selectedCardCountEl.parentElement.classList.add('danger');
@@ -293,7 +293,7 @@ async function handleReady() {
                 // 레거시 모드: 캐릭터 + 스킬 + 카드
                 if (!selectedCharacterId) throw new Error("캐릭터를 선택해주세요.");
                 if (selectedSkillNames.size !== 2) throw new Error("스킬을 2개 선택해주세요.");
-                if (selectedCardIds.size < 5 || selectedCardIds.size > 10) throw new Error("카드는 5~10장 선택해야 합니다.");
+                if (selectedCardIds.size < 5 || selectedCardIds.size > 15) throw new Error("카드는 5~15장 선택해야 합니다.");
 
                 await callSetPlayerReady({
                     roomId: currentRoomId,

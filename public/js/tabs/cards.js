@@ -50,7 +50,7 @@ export async function submitSelectedCards(){
   if (!state.user) return toast("로그인 대기 중…");
   if (!state.roomId) return toast("먼저 방에 참여하거나 만들어줘.");
   const arr = Array.from(state.selected);
-  if (arr.length < 5 || arr.length > 10) return toast("카드는 5~10장만 제출 가능해.");
+  if (arr.length < 5 || arr.length > 15) return toast("카드는 5~15장만 제출 가능해.");
   await updateDoc(doc(db, "rooms", state.roomId, "players", state.user.uid), {
     selectedCardIds: arr, ready: true
   });
