@@ -1,0 +1,54 @@
+# TaleField 프로젝트 Cursor 규칙
+
+## 중요 규칙 (CRITICAL)
+
+### 1. Firestore 데이터베이스 이름 규칙
+
+**절대적으로 반드시 지켜야 할 규칙:**
+
+Firebase/Firestore 데이터베이스 이름은 **무조건** `talefield`를 사용해야 합니다.
+
+- ✅ 올바른 예시: `talefield`
+- ❌ 잘못된 예시: `(default)`, `default`
+
+만약 코드에서 `(default)` 또는 `default`라는 데이터베이스 이름을 발견하면:
+1. 즉시 `talefield`로 수정해야 합니다.
+2. 새로운 코드 작성 시에도 항상 `talefield`를 사용해야 합니다.
+
+**예시 코드:**
+
+```javascript
+// ✅ 올바른 사용법
+const db = getFirestore(app, 'talefield');
+
+// ❌ 잘못된 사용법 (수정 필요)
+const db = getFirestore(app); // (default) 사용 - 수정 필요
+const db = getFirestore(app, '(default)'); // 수정 필요
+```
+
+```python
+# ✅ 올바른 사용법
+db = firestore.Client(database='talefield')
+
+# ❌ 잘못된 사용법 (수정 필요)
+db = firestore.Client() # (default) 사용 - 수정 필요
+```
+
+## 프로젝트 구조
+
+- `/functions` - Firebase Cloud Functions
+- `/public` - 정적 호스팅 파일
+- `firestore.rules` - Firestore 보안 규칙
+- `firebase.json` - Firebase 프로젝트 설정
+
+## 코드 작성 가이드라인
+
+### Firebase 관련
+- Node.js 20 런타임 사용
+- Cloud Functions는 `/functions` 디렉토리에 위치
+- Firestore 규칙은 `firestore.rules` 파일에서 관리
+
+### 일반 규칙
+- 코드 변경 시 기존 코드 스타일을 따를 것
+- 새로운 의존성 추가 시 신중하게 검토할 것
+- 보안 취약점이 발생하지 않도록 주의할 것
